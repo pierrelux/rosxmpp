@@ -9,11 +9,17 @@ import org.apache.xmlrpc.client.XmlRpcCommonsTransportFactory;
 import org.apache.xmlrpc.client.util.ClientFactory;
 import org.rosxmpp.connection.server.XmppServerConnection;
 
+// TODO might get rid of this class
 public class XmppServerConnectionClient {
 	private XmppServerConnection serverConnection;
+	private XmlRpcClient client;
 
 	public XmppServerConnection getServerConnection() {
 		return serverConnection;
+	}
+	
+	public XmlRpcClient getRpcClient() {
+		return client;
 	}
 
 	public XmppServerConnectionClient(String url) throws MalformedURLException {
@@ -24,7 +30,7 @@ public class XmppServerConnectionClient {
         config.setConnectionTimeout(60 * 1000);
         config.setReplyTimeout(60 * 1000);
 
-        XmlRpcClient client = new XmlRpcClient();
+        client = new XmlRpcClient();
       
         client.setTransportFactory(
             new XmlRpcCommonsTransportFactory(client));

@@ -3,11 +3,14 @@ package org.rosxmpp.connection;
 import java.io.BufferedWriter;
 import java.io.File;
 import java.io.FileWriter;
+import java.util.ArrayList;
 import java.util.logging.Logger;
 
 import org.jivesoftware.smack.Connection;
 import org.jivesoftware.smack.ConnectionCreationListener;
 import org.jivesoftware.smack.ConnectionListener;
+import org.jivesoftware.smack.Roster;
+import org.jivesoftware.smack.RosterEntry;
 import org.jivesoftware.smack.XMPPConnection;
 import org.jivesoftware.smack.XMPPException;
 
@@ -56,7 +59,13 @@ public class RosXMPPConnectionManager {
 	};
 	
 	private RosXMPPConnectionManager() {}
-
+	public static synchronized RosXMPPConnectionManager getInstance() {
+		if (null == instance) {
+			instance = new RosXMPPConnectionManager();
+		}
+		return instance;
+	}
+	
 	public void connect(String server, String user, String pass,
 			String ressource) throws XMPPException {
 		// Create XMPP connection to gmail.com server
@@ -92,11 +101,17 @@ public class RosXMPPConnectionManager {
 	public boolean isConnected() {
 		return connection.isConnected();
 	}
+	
+	public String[] getAvailableNodes() {
+        Roster roster = connection.getRoster();
 
-	public static synchronized RosXMPPConnectionManager getInstance() {
-		if (null == instance) {
-			instance = new RosXMPPConnectionManager();
-		}
-		return instance;
+		ArrayList<String> availableNodes = new ArrayList<String>();
+        for (RosterEntry entry : roster.getEntries())
+        {
+            availableNodes.add(entry.getUser());
+        }
+        
+        return availableNodes.toArray(new String[availableNodes.size()]);
 	}
+
 }

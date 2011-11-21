@@ -28,4 +28,9 @@ public class XmppServerConnectionImpl implements XmppServerConnection {
 	public boolean isConnected() {
 		return RosXMPPConnectionManager.getInstance().isConnected();
 	}
+
+	@Override
+	public String[] getAvailableNodes() {
+		return RosXMPPConnectionManager.getInstance().getAvailableNodes();
+	}
 }
