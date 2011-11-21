@@ -10,8 +10,6 @@ import java.io.InputStreamReader;
 import java.lang.reflect.UndeclaredThrowableException;
 import java.net.MalformedURLException;
 
-import org.apache.xmlrpc.XmlRpcException;
-import org.rosxmpp.connection.RosXMPPConnectionManager;
 import org.rosxmpp.connection.client.XmppServerConnectionClient;
 import org.rosxmpp.connection.server.XmppServerConnection;
 
@@ -44,6 +42,12 @@ public class RosXMPP {
 
 		if (args[0].equals("disconnect")) {
 			handleDisconnect(args);
+			return;
+		}
+		
+		if (args[0].equals("status")) {
+			handleStatus(args);
+			return;
 		}
 	}
 	
@@ -211,6 +215,42 @@ public class RosXMPP {
 		}
 	}
 
+	/**
+	 * Return the status of a connection.
+	 * @param args
+	 */
+	private void handleStatus(String[] args) {
+		if (args.length < 2) {
+			System.out.println("rosxmpp disconnect user@server.com");
+			printUsage();
+			System.exit(-1);
+		}
+
+		String[] userServer = args[1].split("@");
+		String user = userServer[0];
+		String server = userServer[1];
+		
+		if (isPidFileExists(user, server)) {
+			XmppServerConnection serverConnection = null;
+			try {
+				serverConnection = getServerConnection(user, server);
+			} catch (FileNotFoundException e) {
+				// TODO Auto-generated catch block
+				e.printStackTrace();
+			} catch (MalformedURLException e) {
+				// TODO Auto-generated catch block
+				e.printStackTrace();
+			}
+			if (serverConnection.isConnected()) {
+				System.out.println(args[1] + " : connected.");
+			} else {
+				System.out.println(args[1] + " : not connected.");
+			}
+		} else {
+			System.out.println(args[1] + " : not connected.");
+		}
+	}
+	
 	/**
 	 * Process the "node" action command
 	 * 
