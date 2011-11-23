@@ -9,13 +9,12 @@ import java.io.IOException;
 import java.io.InputStreamReader;
 import java.lang.reflect.UndeclaredThrowableException;
 import java.net.MalformedURLException;
-import java.util.ArrayList;
 import java.util.Arrays;
 
 import org.apache.xmlrpc.XmlRpcException;
 import org.apache.xmlrpc.client.XmlRpcClient;
-import org.rosxmpp.connection.client.XmppServerConnectionClient;
-import org.rosxmpp.connection.server.XmppServerConnection;
+import org.rosxmpp.connection.client.XmlRpcServerProxy;
+import org.rosxmpp.connection.server.RosXMPPBridgeConnection;
 
 /**
  * This class implements the main interaction logic with the user from the
@@ -58,6 +57,16 @@ public class RosXMPP {
 			handleNode(args);
 			return;
 		}
+		
+		if (args[0].equals("topic")) {
+			handleTopic(args);
+			return;
+		}
+		
+		if (args[0].equals("expose")) {
+			handleExpose(args);
+			return;
+		}
 	}
 
 	/**
@@ -67,7 +76,7 @@ public class RosXMPP {
 	 * @return a XmppServerConnection proxy object
 	 * @throws MalformedURLException
 	 */
-	private XmppServerConnectionClient getServerConnection(String user,
+	private XmlRpcServerProxy getServerConnection(String user,
 			String server) throws FileNotFoundException, MalformedURLException {
 		File pidFile = new File("/var/run/rosxmpp/" + user + "@" + server);
 
@@ -85,21 +94,21 @@ public class RosXMPP {
 			// TODO Auto-generated catch block
 			e1.printStackTrace();
 		}
-		XmppServerConnectionClient clientConnection = null;
-		clientConnection = new XmppServerConnectionClient("http://localhost:"
+		XmlRpcServerProxy clientConnection = null;
+		clientConnection = new XmlRpcServerProxy("http://localhost:"
 				+ port + "/xmlrpc");
 		return clientConnection;
 	}
 
-	private XmppServerConnection getServerProxy(String user, String server)
+	private RosXMPPBridgeConnection getServerProxy(String user, String server)
 			throws FileNotFoundException, MalformedURLException {
-		XmppServerConnectionClient client = getServerConnection(user, server);
-		return client.getServerConnection();
+		XmlRpcServerProxy client = getServerConnection(user, server);
+		return (RosXMPPBridgeConnection) client.getDynamicProxy(RosXMPPBridgeConnection.class);
 	}
 
 	private XmlRpcClient getRpcClient(String user, String server)
 			throws FileNotFoundException, MalformedURLException {
-		XmppServerConnectionClient client = getServerConnection(user, server);
+		XmlRpcServerProxy client = getServerConnection(user, server);
 		return client.getRpcClient();
 	}
 
@@ -122,13 +131,14 @@ public class RosXMPP {
 	 * @param server
 	 * @return
 	 */
+	@SuppressWarnings("unused")
 	private boolean isServerAlive(String user, String server) {
 		if (!isPidFileExists(user, server)) {
 			System.out.println("Pid file does not exists");
 			return false;
 		}
 
-		XmppServerConnection serverConnection = null;
+		RosXMPPBridgeConnection serverConnection = null;
 		try {
 			serverConnection = getServerProxy(user, server);
 		} catch (FileNotFoundException e1) {
@@ -168,7 +178,7 @@ public class RosXMPP {
 		String passwd = args[2];
 
 		// Make sure there is no connected server
-		XmppServerConnection serverConnection = null;
+		RosXMPPBridgeConnection serverConnection = null;
 		if (isPidFileExists(user, server)) {
 			try {
 				serverConnection = getServerProxy(user, server);
@@ -196,7 +206,7 @@ public class RosXMPP {
 	private void startRosXmppServer(String server, String user, String passwd) {
 		System.out.println("Starting process ...");
 		try {
-			Process p = Runtime.getRuntime().exec(
+			Runtime.getRuntime().exec(
 					"/home/pierre-luc/workspace/rosxmpp/rosxmppserver.sh "
 							+ server + " " + user + " " + passwd + " rosxmpp");
 		} catch (IOException e) {
@@ -211,7 +221,7 @@ public class RosXMPP {
 	 * @param args
 	 *            The full CLI arguments.
 	 */
-	void handleDisconnect(String[] args) {
+	private void handleDisconnect(String[] args) {
 		if (args.length < 2) {
 			System.out.println("rosxmpp disconnect user@server.com");
 			printUsage();
@@ -223,7 +233,7 @@ public class RosXMPP {
 		String server = userServer[1];
 
 		if (isPidFileExists(user, server)) {
-			XmppServerConnection serverConnection = null;
+			RosXMPPBridgeConnection serverConnection = null;
 			try {
 				serverConnection = getServerProxy(user, server);
 			} catch (FileNotFoundException e) {
@@ -244,7 +254,7 @@ public class RosXMPP {
 	 */
 	private void handleStatus(String[] args) {
 		if (args.length < 2) {
-			System.out.println("rosxmpp disconnect user@server.com");
+			System.out.println("rosxmpp status user@server.com");
 			printUsage();
 			System.exit(-1);
 		}
@@ -254,7 +264,7 @@ public class RosXMPP {
 		String server = userServer[1];
 
 		if (isPidFileExists(user, server)) {
-			XmppServerConnection serverConnection = null;
+			RosXMPPBridgeConnection serverConnection = null;
 			try {
 				serverConnection = getServerProxy(user, server);
 			} catch (FileNotFoundException e) {
@@ -280,7 +290,7 @@ public class RosXMPP {
 	 * @param args
 	 *            The full CLI arguments.
 	 */
-	void handleNode(String[] args) {
+	private void handleNode(String[] args) {
 		if (args.length < 3) {
 			System.out.println("rosxmpp node list user@server.com");
 			printUsage();
@@ -308,7 +318,7 @@ public class RosXMPP {
 			try {
 				nodesArray = (Object[]) rpcClient
 						.execute(
-								"org.rosxmpp.connection.server.XmppServerConnection.getAvailableNodes",
+								"org.rosxmpp.connection.server.RosXMPPBridgeConnection.getAvailableNodes",
 								params);
 			} catch (XmlRpcException e) {
 				// TODO Auto-generated catch block
@@ -324,11 +334,110 @@ public class RosXMPP {
 
 		}
 	}
+		
+	/**
+	 * Process the "expose" action command
+	 * 
+	 * @param args
+	 *            The full CLI arguments.
+	 */
+	private void handleExpose(String[] args) {
+		if (args.length < 3) {
+			System.out.println("rosxmpp expose http://localhost:11311 user@server.com");
+			printUsage();
+			System.exit(-1);
+		}
 
+		String[] userServer = args[2].split("@");
+		String user = userServer[0];
+		String server = userServer[1];
+		String rosMasterUri = args[1];
+		
+		if (isPidFileExists(user, server)) {
+			XmlRpcClient rpcClient = null;
+			try {
+				rpcClient = getRpcClient(user, server);
+			} catch (FileNotFoundException e) {
+				// TODO Auto-generated catch block
+				e.printStackTrace();
+			} catch (MalformedURLException e) {
+				// TODO Auto-generated catch block
+				e.printStackTrace();
+			}
+			
+			Object[] params = new Object[] {rosMasterUri};
+			try {
+				Integer ret = (Integer) rpcClient
+						.execute(
+								"org.rosxmpp.connection.server.RosXMPPBridgeConnection.exposeRosMaster",
+								params);
+				
+				if (ret != 0) {
+					System.out.println("Failed to expose ros master " + rosMasterUri + " over XMPP.");
+				} else {
+					System.out.println("Ros master " + rosMasterUri + " is now reachable over XMPP.");
+				}
+				
+			} catch (XmlRpcException e) {
+				// TODO Auto-generated catch block
+				e.printStackTrace();
+			}
+		}
+	}
+
+	/**
+	 * Process the "topic" action command
+	 * 
+	 * @param args
+	 *            The full CLI arguments.
+	 */
+	private void handleTopic(String[] args) {
+		if (args.length < 3) {
+			System.out.println("rosxmpp topic list remote@server.com");
+			printUsage();
+			System.exit(-1);
+		}
+
+		String[] userServer = args[2].split("@");
+		String user = userServer[0];
+		String server = userServer[1];
+		
+		if (isPidFileExists(user, server)) {
+			XmlRpcClient rpcClient = null;
+			try {
+				rpcClient = getRpcClient(user, server);
+			} catch (FileNotFoundException e) {
+				// TODO Auto-generated catch block
+				e.printStackTrace();
+			} catch (MalformedURLException e) {
+				// TODO Auto-generated catch block
+				e.printStackTrace();
+			}
+			
+			Object[] params = new Object[]{"rosxmpp", ""};
+			Object[] response = null;
+			try {
+				response = (Object[]) rpcClient.execute("org.rosxmpp.connection.server.RosXMPPBridgeConnection.getPublishedTopics", params);
+			} catch (XmlRpcException e) {
+				// TODO Auto-generated catch block
+				e.printStackTrace();
+			}
+			int status = ((Integer)response[0]).intValue();
+			String statusMessage = ((String) response[1]);
+			System.out.println("Status " + status + " \"" + statusMessage + "\"");		
+			
+			Object[] result = (Object[]) response[2];
+			for (int i = 0; i < result.length; i++) {
+			     Object[] topicTypePair = (Object[]) result[i];
+			     System.out.println("Topic " + (String)topicTypePair[0] + " type " + (String)topicTypePair[1]);
+			}
+		}
+	}
+	
 	/**
 	 * Prints general usage help.
 	 */
-	void printUsage() {
+	private void printUsage() {
 		System.out.println("rosxmpp [action] [action option]");
 	}
 
@@ -336,7 +445,7 @@ public class RosXMPP {
 	 * @param args
 	 */
 	public static void main(String[] args) {
-		RosXMPP rosXmpp = new RosXMPP(args);
+		new RosXMPP(args);
 	}
 
 }

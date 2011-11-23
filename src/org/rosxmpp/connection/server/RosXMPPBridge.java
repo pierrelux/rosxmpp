@@ -1,17 +1,13 @@
 package org.rosxmpp.connection.server;
 
-import java.io.BufferedWriter;
-import java.io.File;
-import java.io.FileWriter;
 import java.io.IOException;
+import java.util.logging.Logger;
 
 import org.apache.xmlrpc.XmlRpcException;
 import org.apache.xmlrpc.server.PropertyHandlerMapping;
 import org.apache.xmlrpc.server.XmlRpcServer;
 import org.apache.xmlrpc.server.XmlRpcServerConfigImpl;
 import org.apache.xmlrpc.webserver.WebServer;
-import org.jivesoftware.smack.XMPPException;
-import org.rosxmpp.connection.RosXMPPConnectionManager;
 
 /**
  * This class spawns a webserver
@@ -19,20 +15,16 @@ import org.rosxmpp.connection.RosXMPPConnectionManager;
  * @author Pierre-Luc Bacon
  * 
  */
-public class RosXMPPServer {
+public class RosXMPPBridge {
 	private static final int port = 8080;
-	
-	public RosXMPPServer(String server, String user, String pass,
-			String ressource) {
-		// Attempt to connect
-		try {
-			RosXMPPConnectionManager.getInstance().connect(server, user, pass, ressource);
-		} catch(XMPPException e) {
-			System.out.println("Failed to connect : ");
-			e.printStackTrace();
-		}
+    private static Logger logger = Logger.getLogger("org.rosxmpp.cli");
+
+	public RosXMPPBridge(String server, String user, String pass,
+			String resource) {	
+		// Connect to XMPP server
+		RosXMPPBridgeConnectionManager.getInstance().connect(server, user, pass, resource);
 		
-		// Expose the connection manager over XML-RPC
+		// Instantiate XML-RPC interface for the cli program rosxmpp 
 		WebServer webServer = new WebServer(port);
 
 		XmlRpcServer xmlRpcServer = webServer.getXmlRpcServer();
@@ -41,11 +33,11 @@ public class RosXMPPServer {
 			phm.load(Thread.currentThread().getContextClassLoader(),
 					"XmlRpcServlet.properties");
 		} catch (IOException e1) {
-			// TODO Auto-generated catch block
-			e1.printStackTrace();
+			logger.throwing(this.getClass().getName(), "RosXMPPBridge", e1);
+			System.exit(-1);
 		} catch (XmlRpcException e1) {
-			// TODO Auto-generated catch block
-			e1.printStackTrace();
+			logger.throwing(this.getClass().getName(), "RosXMPPBridge", e1);
+			System.exit(-1);
 		}
 		xmlRpcServer.setHandlerMapping(phm);
 		XmlRpcServerConfigImpl serverConfig = (XmlRpcServerConfigImpl) xmlRpcServer
@@ -53,20 +45,22 @@ public class RosXMPPServer {
 		serverConfig.setEnabledForExtensions(true);
 		serverConfig.setContentLengthOptional(false);
 		
+		// Start XML-RPC server
 		try {
 			webServer.start();
 		} catch (IOException e) {
-			// TODO Auto-generated catch block
-			e.printStackTrace();
-		}		
-		System.out.println("Server started");
+			logger.severe("Failed to start rosxmppbridge XML-RPC interface.");
+			logger.throwing(this.getClass().getName(), "RosXMPPBridge", e);
+		}
+		
+		logger.info("rosxmppbridge XML-RPC interface started");
 	}
 	
 	public static void main(String[] args) throws Exception {
 		if (args.length < 4) {
-			System.out.println("Missing arguments : rosxmppserver [server] [user] [pass] [ressource]");
+			System.out.println("rosxmppbridge [server] [user] [passwd] [resource]");
+			System.exit(-1);
 		}
-		
-		RosXMPPServer server = new RosXMPPServer(args[0], args[1], args[2], args[3]);
+		new RosXMPPBridge(args[0], args[1], args[2], args[3]);
 	}
 }
