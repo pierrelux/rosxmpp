@@ -6,8 +6,10 @@ import java.io.FileWriter;
 import java.util.ArrayList;
 import java.util.logging.Logger;
 
+import org.activequant.xmpprpc.JabberRpcClient;
 import org.activequant.xmpprpc.JabberRpcServer;
 import org.apache.xmlrpc.XmlRpcException;
+import org.jivesoftware.smack.Connection;
 import org.jivesoftware.smack.ConnectionListener;
 import org.jivesoftware.smack.Roster;
 import org.jivesoftware.smack.RosterEntry;
@@ -22,12 +24,14 @@ import org.jivesoftware.smack.XMPPException;
  * 
  */
 public class RosXMPPBridgeConnectionManager implements RosXMPPBridgeConnection {
-	private XMPPConnection connection;
 	private static RosXMPPBridgeConnectionManager instance;
-	private File pidFile;
-
     private static Logger logger = Logger.getLogger("org.rosxmpp.cli");
-
+    
+	private File pidFile;
+	private MasterImpl masterApi;
+	private XMPPConnection connection;
+	private JabberRpcServer jabberRpcServer;
+	
 	private ConnectionListener conlistener = new ConnectionListener() {
 		public void connectionClosed() {
 			System.out.println("XMPP Connection Closed");
@@ -55,11 +59,16 @@ public class RosXMPPBridgeConnectionManager implements RosXMPPBridgeConnection {
 			
 		}
 	};
-	private JabberRpcServer jabberRpcServer;
-	private MasterImpl masterApi;
-	private Thread jabberRpcThread;
 	
+	/**
+	 * This class is implemented as a singleton.
+	 */
 	private RosXMPPBridgeConnectionManager() {}
+	
+	/**
+	 * Get the single instance of this class.
+	 * @return single instance of class RosXMPPBridgeConnectionManager.
+	 */
 	public static synchronized RosXMPPBridgeConnectionManager getInstance() {
 		if (null == instance) {
 			instance = new RosXMPPBridgeConnectionManager();
@@ -93,7 +102,7 @@ public class RosXMPPBridgeConnectionManager implements RosXMPPBridgeConnection {
 			return -1;
 		}
 		logger.info("Logged in to XMPP server " + server + " as " + user);
-			
+				
 		// Write a dummy file under /var/run to keep track of the active connection
 		pidFile = new File("/var/run/rosxmpp/" + user + "@" + server);
 		try {
@@ -140,15 +149,40 @@ public class RosXMPPBridgeConnectionManager implements RosXMPPBridgeConnection {
 	}
 	
 	@Override
-	public Object[] getPublishedTopics(String callerId, String subgraph) {
-		logger.fine("Handling getPublishedTopics request");
+	public Object[] getPublishedTopics(String remoteUser) {
+		logger.info("Handling getPublishedTopics request");
+		Connection.DEBUG_ENABLED = true;
 
-		return masterApi.getPublishedTopics(callerId, subgraph);
+		// Create a Jabber-RPC client
+		JabberRpcClient xmppRpcClient = null;
+		try {
+			xmppRpcClient = new JabberRpcClient(connection, remoteUser);
+		} catch (Exception e) {
+			logger.severe("Failed to create a jabber-rcp client.");
+			logger.throwing(this.getClass().getName(), "getPublishedTopics", e);
+		}
+		
+		xmppRpcClient.start();
+		Object[] topics = null;
+		ArrayList<Object> params = new ArrayList<Object>();
+		params.add("rosxmpp");
+		params.add("");
+		
+		try {
+			topics = (Object[]) xmppRpcClient.execute("master.getPublishedTopics", params);
+		} catch (XmlRpcException e) {
+			logger.severe("Failed to call remote method getPublishedTopics on " + remoteUser + " over Jabber-RPC.");
+			logger.throwing(this.getClass().getName(), "getPublishedTopics", e);
+			e.printStackTrace();
+		}
+		xmppRpcClient.stop();
+
+		return topics;
 	}
 	
 	@Override
 	public int exposeRosMaster(String uri) {
-		// TODO Make sure we are not already exposing this ROS master 
+		// TODO Make sure we are not already exposing this ROS master uri
 		logger.info("Handling exposeRosMaster request");
 		
 		// Create a JabberRpcServer to answer queries over XMPP
@@ -168,13 +202,17 @@ public class RosXMPPBridgeConnectionManager implements RosXMPPBridgeConnection {
 			return -1;
 		}
 		
-		// Spawn a new thread to handle RPC requests
-		jabberRpcThread = new Thread(jabberRpcServer);
-		jabberRpcThread.start();
+		// Start the thread to handle RPC requests
+		jabberRpcServer.start();
 
 		logger.info("Master API exposed over Jabber-RPC");
 
 		return 1;
+	}
+	
+	@Override
+	public void proxyRemoteTopics() {
+		//Object[] topics = getPublishedTopics("rosxmpp", "");
 	}
 
 }

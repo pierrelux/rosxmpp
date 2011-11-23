@@ -22,12 +22,17 @@ public class RosXMPPBridgeConnectionImpl implements RosXMPPBridgeConnection {
 	}
 
 	@Override
-	public Object[] getPublishedTopics(String callerId, String subgraph) {
-		return RosXMPPBridgeConnectionManager.getInstance().getPublishedTopics(callerId, subgraph);
+	public Object[] getPublishedTopics(String remoteNode) {
+		return RosXMPPBridgeConnectionManager.getInstance().getPublishedTopics(remoteNode);
 	}
 
 	@Override
 	public int exposeRosMaster(String uri) {
 		return RosXMPPBridgeConnectionManager.getInstance().exposeRosMaster(uri);
+	}
+
+	@Override
+	public void proxyRemoteTopics() {
+		RosXMPPBridgeConnectionManager.getInstance().proxyRemoteTopics();		
 	}
 }

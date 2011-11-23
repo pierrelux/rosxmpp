@@ -85,7 +85,7 @@ public interface Master  {
    *          API URI of publisher to register
    * @return list of current subscribers of topic in the form of XML-RPC URIs
    */
-  public List<Object> registerPublisher(String callerId, String topicName, String topicType,
+  public Object[] registerPublisher(String callerId, String topicName, String topicType,
       String callerApi);
   /**
    * Unregister the caller as a publisher of the topic.

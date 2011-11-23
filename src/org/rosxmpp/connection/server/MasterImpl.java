@@ -2,6 +2,7 @@ package org.rosxmpp.connection.server;
 
 import java.net.MalformedURLException;
 import java.util.List;
+import java.util.logging.Logger;
 
 import org.apache.xmlrpc.XmlRpcException;
 import org.rosxmpp.connection.client.XmlRpcServerProxy;
@@ -11,13 +12,14 @@ public class MasterImpl implements Master {
 	private XmlRpcServerProxy rosServerProxy;
 	static final String callerId = "rosxmpp";
 
+    private static Logger logger = Logger.getLogger("org.rosxmpp.cli");
+
 	public MasterImpl(String rosMasterUri) {
 		try {
 			rosServerProxy = new XmlRpcServerProxy("http://localhost:11311");
 		} catch (MalformedURLException e) {
-			// TODO Auto-generated catch block
-			System.out.println("Failed to contact master");
-			e.printStackTrace();
+			logger.throwing(this.getClass().getName(), "MasterImpl", e);
+			// TODO Do something. Throw again ? 
 		}
 	}
 
@@ -28,7 +30,7 @@ public class MasterImpl implements Master {
 		try {
 			response = (Object[]) rosServerProxy.getRpcClient().execute("getPublishedTopics", params);
 		} catch (XmlRpcException e) {
-			System.out.println("Failed to contact master");
+			logger.throwing(this.getClass().getName(), "MasterImpl", e);
 		}
 		return response;
 	}
@@ -58,10 +60,16 @@ public class MasterImpl implements Master {
 	}
 
 	@Override
-	public List<Object> registerPublisher(String callerId, String topicName,
+	public Object[] registerPublisher(String callerId, String topicName,
 			String topicType, String callerApi) {
-		// TODO Auto-generated method stub
-		return null;
+		Object[] params = new Object[]{callerId, topicName};
+		Object[] response = null;
+		try {
+			response = (Object[]) rosServerProxy.getRpcClient().execute("registerPublisher", params);
+		} catch (XmlRpcException e) {
+			logger.throwing(this.getClass().getName(), "MasterImpl", e);
+		}
+		return response;
 	}
 
 	@Override

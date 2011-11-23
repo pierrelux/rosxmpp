@@ -373,7 +373,7 @@ public class RosXMPP {
 								params);
 				
 				if (ret <= 0) {
-					System.out.println("Failed to expose ros master " + rosMasterUri + " over XMPP.");
+					System.out.println("Failed to expose ros master " + rosMasterUri + " over XMPP. " + ret);
 				} else {
 					System.out.println("Ros master " + rosMasterUri + " is now reachable over XMPP.");
 				}
@@ -393,19 +393,21 @@ public class RosXMPP {
 	 */
 	private void handleTopic(String[] args) {
 		if (args.length < 3) {
-			System.out.println("rosxmpp topic list remote@server.com");
+			System.out.println("rosxmpp topic list remote@server.com local@server.com");
 			printUsage();
 			System.exit(-1);
 		}
 
-		String[] userServer = args[2].split("@");
-		String user = userServer[0];
-		String server = userServer[1];
+		String remoteUserServer = args[2];
 		
-		if (isPidFileExists(user, server)) {
+		String[] localUserServer = args[3].split("@");
+		String localUser = localUserServer[0];
+		String localServer = localUserServer[1];
+		
+		if (isPidFileExists(localUser, localServer)) {
 			XmlRpcClient rpcClient = null;
 			try {
-				rpcClient = getRpcClient(user, server);
+				rpcClient = getRpcClient(localUser, localServer);
 			} catch (FileNotFoundException e) {
 				// TODO Auto-generated catch block
 				e.printStackTrace();
@@ -414,7 +416,7 @@ public class RosXMPP {
 				e.printStackTrace();
 			}
 			
-			Object[] params = new Object[]{"rosxmpp", ""};
+			Object[] params = new Object[]{remoteUserServer};
 			Object[] response = null;
 			try {
 				response = (Object[]) rpcClient.execute("org.rosxmpp.connection.server.RosXMPPBridgeConnection.getPublishedTopics", params);
