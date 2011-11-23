@@ -372,7 +372,7 @@ public class RosXMPP {
 								"org.rosxmpp.connection.server.RosXMPPBridgeConnection.exposeRosMaster",
 								params);
 				
-				if (ret != 0) {
+				if (ret <= 0) {
 					System.out.println("Failed to expose ros master " + rosMasterUri + " over XMPP.");
 				} else {
 					System.out.println("Ros master " + rosMasterUri + " is now reachable over XMPP.");

@@ -114,7 +114,7 @@ public class RosXMPPBridgeConnectionManager implements RosXMPPBridgeConnection {
 		logger.info("Handling disconnect request");
 		
 		connection.disconnect();
-		return 0;
+		return 1;
 	}
 
 	@Override
@@ -174,7 +174,7 @@ public class RosXMPPBridgeConnectionManager implements RosXMPPBridgeConnection {
 
 		logger.info("Master API exposed over Jabber-RPC");
 
-		return 0;
+		return 1;
 	}
 
 }
