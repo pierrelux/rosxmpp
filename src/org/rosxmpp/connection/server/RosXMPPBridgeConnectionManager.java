@@ -4,6 +4,7 @@ import java.io.BufferedWriter;
 import java.io.File;
 import java.io.FileWriter;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.logging.Logger;
 
 import org.activequant.xmpprpc.JabberRpcClient;
@@ -34,7 +35,9 @@ public class RosXMPPBridgeConnectionManager implements RosXMPPBridgeConnection {
 	private File pidFile;
 	private MasterImpl masterApi;
 	private XMPPConnection connection;
-	private JabberRpcServer jabberRpcServer;
+
+	// Can map multiple ROS cores using this rosxmppbridge
+	private HashMap<String, JabberRpcServer> jabberRpcServers = new HashMap<String, JabberRpcServer>();
 
 	public static final String ROSXMPP_CALLERID = ROSXMPP_RPC_RESOURCE;
 
@@ -205,12 +208,18 @@ public class RosXMPPBridgeConnectionManager implements RosXMPPBridgeConnection {
 
 	@Override
 	public int exposeRosMaster(String uri) {
-		// TODO Make sure we are not already exposing this ROS master uri
 		logger.info("Handling exposeRosMaster request");
 
+		if (jabberRpcServers.get(uri) != null) {
+			logger.warning("Already exposing ROS master at " + uri);
+			return -1;
+		}
+	
 		// Create a JabberRpcServer to answer queries over XMPP
+		JabberRpcServer jabberRpcServer;
 		try {
 			jabberRpcServer = new JabberRpcServer(connection);
+			jabberRpcServers.put(uri, jabberRpcServer);
 		} catch (Exception e1) {
 			logger.throwing(this.getClass().getName(), "exposeRosMaster", e1);
 			return -1;
