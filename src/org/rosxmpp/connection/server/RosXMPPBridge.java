@@ -3,6 +3,7 @@ package org.rosxmpp.connection.server;
 import java.io.IOException;
 import java.util.logging.Logger;
 
+import org.apache.mina.util.AvailablePortFinder;
 import org.apache.xmlrpc.XmlRpcException;
 import org.apache.xmlrpc.server.PropertyHandlerMapping;
 import org.apache.xmlrpc.server.XmlRpcServer;
@@ -10,13 +11,13 @@ import org.apache.xmlrpc.server.XmlRpcServerConfigImpl;
 import org.apache.xmlrpc.webserver.WebServer;
 
 /**
- * This class spawns a webserver
+ * This class spawns a webserver to handle commands from rosxmpp cli
  * 
  * @author Pierre-Luc Bacon
  * 
  */
 public class RosXMPPBridge {
-	private static final int port = 8080;
+	private static final int port = AvailablePortFinder.getNextAvailable(8080);
     private static Logger logger = Logger.getLogger("org.rosxmpp.cli");
 
 	public RosXMPPBridge(String server, String user, String pass,
@@ -51,9 +52,12 @@ public class RosXMPPBridge {
 		} catch (IOException e) {
 			logger.severe("Failed to start rosxmppbridge XML-RPC interface.");
 			logger.throwing(this.getClass().getName(), "RosXMPPBridge", e);
+			System.exit(-1);
 		}
 		
-		logger.info("rosxmppbridge XML-RPC interface started");
+		RosXMPPBridgeConnectionManager.getInstance().setXmlRpcPort(port);
+		
+		logger.info("rosxmppbridge XML-RPC interface listening on port " + port);
 	}
 	
 	public static void main(String[] args) throws Exception {

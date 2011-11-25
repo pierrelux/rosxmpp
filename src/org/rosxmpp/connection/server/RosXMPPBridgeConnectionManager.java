@@ -26,14 +26,17 @@ import org.jivesoftware.smack.XMPPException;
 public class RosXMPPBridgeConnectionManager implements RosXMPPBridgeConnection {
 	private static final String ROSXMPP_RPC_RESOURCE = "rosxmpp";
 	private static final String MASTER_NS = "master";
-	public static final String ROSXMPP_CALLERID = ROSXMPP_RPC_RESOURCE;
 	private static RosXMPPBridgeConnectionManager instance;
 	private static Logger logger = Logger.getLogger("org.rosxmpp.cli");
+
+	private int xmlRpcPort = 8080;
 
 	private File pidFile;
 	private MasterImpl masterApi;
 	private XMPPConnection connection;
 	private JabberRpcServer jabberRpcServer;
+
+	public static final String ROSXMPP_CALLERID = ROSXMPP_RPC_RESOURCE;
 
 	private ConnectionListener conlistener = new ConnectionListener() {
 		public void connectionClosed() {
@@ -81,6 +84,14 @@ public class RosXMPPBridgeConnectionManager implements RosXMPPBridgeConnection {
 		return instance;
 	}
 
+	public int getXmlRpcPort() {
+		return xmlRpcPort;
+	}
+
+	public void setXmlRpcPort(int xmlRpcPort) {
+		this.xmlRpcPort = xmlRpcPort;
+	}
+	
 	@Override
 	public int connect(String server, String user, String pass, String ressource) {
 		logger.fine("Handling connect() request");
@@ -114,8 +125,7 @@ public class RosXMPPBridgeConnectionManager implements RosXMPPBridgeConnection {
 		try {
 			FileWriter fstream = new FileWriter(pidFile);
 			BufferedWriter out = new BufferedWriter(fstream);
-			out.write(String.valueOf(8080)); // FIXME Should take its value from
-												// RosXMPPServer
+			out.write(String.valueOf(xmlRpcPort)); 
 			out.close();
 		} catch (Exception e) {
 			logger.severe("Failed to write PID file " + pidFile.getName());
