@@ -264,27 +264,22 @@ public class RosXMPPBridgeConnectionManager implements RosXMPPBridgeConnection {
 		    + ROSXMPP_RPC_RESOURCE);
 	} catch (Exception e) {
 	    logger.severe("Failed to create a jabber-rcp client.");
-	    logger.throwing(this.getClass().getName(), "getPublishedTopics", e);
+	    logger.severe(e.getMessage());
 	    return null;
 	}
 
 	// Start the client thread
 	xmppRpcClient.start();
-	try {
-	    // FIXME ! Super-huge ugly hack
-	    Thread.sleep(1000);
-	} catch (InterruptedException e1) {
-	    // TODO Auto-generated catch block
-	    e1.printStackTrace();
-	}
+	
+	jabberRpcClients.put(remoteUser, xmppRpcClient);
+	logger.info("User " + remoteUser + " added for instantiated Jabber-RPC client");
 	
 	return xmppRpcClient;
     }
     
     @Override
     public Object[] getPublishedTopics(String remoteUser) {
-	logger
-		.info("Handling getPublishedTopics request to node "
+	logger.info("Handling getPublishedTopics request to node "
 			+ remoteUser);
 
 	JabberRpcClient xmppRpcClient = getJabberRpcClient(remoteUser);
@@ -299,21 +294,22 @@ public class RosXMPPBridgeConnectionManager implements RosXMPPBridgeConnection {
 	// Empty string below is to obtain all topics (root node)
 	params.add("");
 	try {
-	    logger
-		    .info("Calling master.getPublishedTopics over Jabber-RPC ...");
+	    logger.info("Calling master.getPublishedTopics over Jabber-RPC ...");
+	    
 	    topics = (Object[]) xmppRpcClient.execute(
-		    "master.getPublishedTopics", params);
+		    MASTER_NAMESPACE + ".getPublishedTopics", params);
+	    
 	} catch (XmlRpcException e) {
 	    logger.severe("Failed to call remote method getPublishedTopics on "
 		    + remoteUser + " over Jabber-RPC.");
-	    logger.throwing(this.getClass().getName(), "getPublishedTopics", e);
+	    logger.severe(e.getMessage());
 	    
 	    xmppRpcClient.stop();
+	    
 	    return new Object[] { (int) -1,
 		    "Failed to call getPublishedTopics on Jabber-RPC server." };
 	}
-	xmppRpcClient.stop();
-
+	
 	return topics;
     }
 
@@ -332,7 +328,7 @@ public class RosXMPPBridgeConnectionManager implements RosXMPPBridgeConnection {
 	    jabberRpcServer = new JabberRpcServer(connection);
 	    jabberRpcServers.put(uri, jabberRpcServer);
 	} catch (Exception e1) {
-	    logger.throwing(this.getClass().getName(), "exposeRosMaster", e1);
+	    logger.severe(e1.getMessage());
 	    return -1;
 	}
 
@@ -341,7 +337,7 @@ public class RosXMPPBridgeConnectionManager implements RosXMPPBridgeConnection {
 	try {
 	    jabberRpcServer.exposeObject(MASTER_NAMESPACE, masterApi);
 	} catch (XmlRpcException e1) {
-	    logger.throwing(this.getClass().getName(), "exposeRosMaster", e1);
+	    logger.severe(e1.getMessage());
 	    return -1;
 	}
 
