@@ -32,7 +32,7 @@ public class RosXMPPBridgeConnectionImpl implements RosXMPPBridgeConnection {
 	}
 
 	@Override
-	public void proxyRemoteTopics() {
-		RosXMPPBridgeConnectionManager.getInstance().proxyRemoteTopics();		
+	public int proxyRemoteTopics(String remoteNode) {
+		return RosXMPPBridgeConnectionManager.getInstance().proxyRemoteTopics(remoteNode);		
 	}
 }

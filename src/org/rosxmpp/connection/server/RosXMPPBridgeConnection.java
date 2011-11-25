@@ -58,5 +58,5 @@ public interface RosXMPPBridgeConnection {
 	 * using remote types and topic names.
 	 * TODO Provide a version from which we can seletively proxy remote topics.
 	 */
-	public void proxyRemoteTopics();
+	public int proxyRemoteTopics(String remoteNode);
 }

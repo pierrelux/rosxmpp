@@ -25,6 +25,7 @@ public class MasterImpl implements Master {
 
 	@Override
 	public Object[] getPublishedTopics(String callerId, String subgraph) {
+		logger.info("Jabber-RPC Server : Requesting topic list from ROS master ...");
 		Object[] params = new Object[]{callerId, subgraph};
 		Object[] response = null;
 		try {
