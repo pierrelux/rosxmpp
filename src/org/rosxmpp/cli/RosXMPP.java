@@ -9,7 +9,10 @@ import java.io.IOException;
 import java.io.InputStreamReader;
 import java.lang.reflect.UndeclaredThrowableException;
 import java.net.MalformedURLException;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashMap;
+import java.util.Map.Entry;
 
 import org.apache.xmlrpc.XmlRpcException;
 import org.apache.xmlrpc.client.XmlRpcClient;
@@ -25,51 +28,37 @@ import org.rosxmpp.connection.server.RosXMPPBridgeConnection;
  * 
  */
 public class RosXMPP {
+    private static final String PROGRAM_NAME = "rosxmpp";
+    HashMap<String, CommandHandler> commands = new HashMap<String, CommandHandler>();
+    
     public RosXMPP(String[] args) {
-	parseArguments(args);
-    }
+	commands.put(connectCommand.getCommandName(), connectCommand);
+	commands.put(disconnectCommand.getCommandName(), disconnectCommand);
+	commands.put(nodeCommand.getCommandName(), nodeCommand);
+	commands.put(exposeCommand.getCommandName(), exposeCommand);
+	commands.put(topicCommand.getCommandName(), topicCommand);
+	commands.put(statusCommand.getCommandName(), statusCommand);
 
-    /**
-     * Parse the CLI arguments passed to the program
-     * 
-     * @param args
-     */
-    private void parseArguments(String[] args) {
-	if (args.length < 1) {
+	CommandHandler handler = commands.get(args[0]);
+	if (handler == null) {
+	    System.out.println(args[0] + " : No such command.");
 	    printUsage();
 	    System.exit(-1);
 	}
-	if (args[0].equals("connect")) {
-	    handleConnect(args);
-	    return;
-	}
-
-	if (args[0].equals("disconnect")) {
-	    handleDisconnect(args);
-	    return;
-	}
-
-	if (args[0].equals("status")) {
-	    handleStatus(args);
-	    return;
-	}
-
-	if (args[0].equals("node")) {
-	    handleNode(args);
-	    return;
-	}
-
-	if (args[0].equals("topic")) {
-	    handleTopic(args);
-	    return;
-	}
-
-	if (args[0].equals("expose")) {
-	    handleExpose(args);
-	    return;
-	}
+	
+	handler.handleCommand(args);
     }
 
+    /**
+     * Prints general usage help.
+     */
+    private void printUsage() {
+	System.out.println("rosxmpp [action] [action option]");
+	for (Entry<String, CommandHandler> entry: commands.entrySet()) {
+	    System.out.println("        " + entry.getValue().getUsage());
+	}
+    }
+    
     /**
      * Get a server connection from a user and host information. This relies on
      * /var/run/rosxmpp/user@host to record port assignment.
@@ -196,238 +185,275 @@ public class RosXMPP {
 	}
     }
 
-    /**
-     * Process the "connect" action command
-     * 
-     * @param args
-     *            The full CLI arguments.
-     */
-    private void handleConnect(String[] args) {
-	if (args.length < 3) {
-	    System.out.println("rosxmpp connect user@server.com passwd");
-	    printUsage();
-	    System.exit(-1);
+    CommandHandler connectCommand = new CommandHandler() {
+	@Override
+	public void handleCommand(String[] args) {
+	    if (args.length < 3) {
+		System.out.println("rosxmpp connect user@server.com passwd");
+		printUsage();
+		System.exit(-1);
+	    }
+
+	    String[] userServer = args[1].split("@");
+	    String user = userServer[0];
+	    String server = userServer[1];
+	    String passwd = args[2];
+
+	    // Make sure there is no connected server
+	    RosXMPPBridgeConnection serverConnection = null;
+	    if (isPidFileExists(user, server)) {
+		try {
+		    serverConnection = getServerProxy(user, server);
+		} catch (FileNotFoundException e) {
+		    // TODO Auto-generated catch block
+		    e.printStackTrace();
+		} catch (MalformedURLException e) {
+		    // TODO Auto-generated catch block
+		    e.printStackTrace();
+		}
+
+		if (serverConnection.isConnected()) {
+		    System.out.println("Already connected to " + server
+			    + " as " + user);
+		    return;
+		}
+
+		serverConnection.connect(server, user, passwd, PROGRAM_NAME);
+	    } else {
+		System.out.println("Starting new server");
+		startRosXmppServer(server, user, passwd);
+	    }
 	}
 
-	String[] userServer = args[1].split("@");
-	String user = userServer[0];
-	String server = userServer[1];
-	String passwd = args[2];
+	@Override
+	public String getUsage() {
+	    return getCommandName() + " user@server.com passwd";
+	}
 
-	// Make sure there is no connected server
-	RosXMPPBridgeConnection serverConnection = null;
-	if (isPidFileExists(user, server)) {
+	@Override
+	public String getCommandName() {
+	    return "connect";
+	}
+    };
+
+    CommandHandler disconnectCommand = new CommandHandler() {
+	@Override
+	public void handleCommand(String[] args) {
+	    if (args.length < 2) {
+		System.out.println("rosxmpp disconnect user@server.com");
+		printUsage();
+		System.exit(-1);
+	    }
+
+	    String[] userServer = args[1].split("@");
+	    String user = userServer[0];
+	    String server = userServer[1];
+
 	    try {
-		serverConnection = getServerProxy(user, server);
-	    } catch (FileNotFoundException e) {
-		// TODO Auto-generated catch block
-		e.printStackTrace();
-	    } catch (MalformedURLException e) {
-		// TODO Auto-generated catch block
-		e.printStackTrace();
+		executeBridgeMethod(user, server, "disconnect", new Object[] {});
+	    } catch (XmlRpcException e) {
+		System.out.println("Disconnection failed for " + user + "@"
+			+ server);
+		System.exit(-1);
+	    }
+	}
+
+	@Override
+	public String getUsage() {
+	    return getCommandName() + " user@server.com";
+	}
+
+	@Override
+	public String getCommandName() {
+	    return "disconnect";
+	}
+    };
+
+    CommandHandler statusCommand = new CommandHandler() {
+	@Override
+	public void handleCommand(String[] args) {
+	    if (args.length < 2) {
+		System.out.println("rosxmpp status user@server.com");
+		printUsage();
+		System.exit(-1);
 	    }
 
-	    if (serverConnection.isConnected()) {
-		System.out.println("Already connected to " + server + " as "
-			+ user);
-		return;
+	    String[] userServer = args[1].split("@");
+	    String user = userServer[0];
+	    String server = userServer[1];
+
+	    boolean ret = false;
+	    try {
+		ret = (Boolean) executeBridgeMethod(user, server,
+			"isConnected", new Object[] {});
+	    } catch (XmlRpcException e) {
+		System.out.println("Method call failed for " + user + "@"
+			+ server);
+		System.exit(-1);
 	    }
 
-	    serverConnection.connect(server, user, passwd, "rosxmpp");
-	} else {
-	    System.out.println("Starting new server");
-	    startRosXmppServer(server, user, passwd);
-	}
-    }
-
-    /**
-     * Process the "connect" action command
-     * 
-     * @param args
-     *            The full CLI arguments.
-     */
-    private void handleDisconnect(String[] args) {
-	if (args.length < 2) {
-	    System.out.println("rosxmpp disconnect user@server.com");
-	    printUsage();
-	    System.exit(-1);
+	    if (ret) {
+		System.out.println(args[1] + " : connected.");
+	    } else {
+		System.out.println(args[1] + " : not connected.");
+	    }
 	}
 
-	String[] userServer = args[1].split("@");
-	String user = userServer[0];
-	String server = userServer[1];
-
-	try {
-	    executeBridgeMethod(user, server, "disconnect", new Object[] {});
-	} catch (XmlRpcException e) {
-	    System.out.println("Disconnection failed for " + user + "@"
-		    + server);
-	    System.exit(-1);
-	}
-    }
-
-    /**
-     * Return the status of a connection.
-     * 
-     * @param args
-     */
-    private void handleStatus(String[] args) {
-	if (args.length < 2) {
-	    System.out.println("rosxmpp status user@server.com");
-	    printUsage();
-	    System.exit(-1);
+	@Override
+	public String getUsage() {
+	    return getCommandName() + " user@server.com";
 	}
 
-	String[] userServer = args[1].split("@");
-	String user = userServer[0];
-	String server = userServer[1];
+	@Override
+	public String getCommandName() {
+	    return "status";
+	}
+    };
 
-	boolean ret = false;
-	try {
-	    ret = (Boolean) executeBridgeMethod(user, server, "isConnected",
-		    new Object[] {});
-	} catch (XmlRpcException e) {
-	    System.out.println("Method call failed for " + user + "@" + server);
-	    System.exit(-1);
+    CommandHandler nodeCommand = new CommandHandler() {
+	@Override
+	public void handleCommand(String[] args) {
+	    if (args.length < 3) {
+		System.out.println("rosxmpp node list user@server.com");
+		printUsage();
+		System.exit(-1);
+	    }
+
+	    String[] userServer = args[2].split("@");
+	    String user = userServer[0];
+	    String server = userServer[1];
+
+	    // Call method
+	    Object[] params = new Object[] {};
+	    Object[] nodesArray = null;
+
+	    try {
+		nodesArray = (Object[]) executeBridgeMethod(user, server,
+			"getAvailableNodes", params);
+	    } catch (XmlRpcException e) {
+		System.out
+			.println("Failed to retreive the list of available master nodes "
+				+ user + "@" + server);
+		System.exit(-1);
+	    }
+
+	    String[] nodes = Arrays.copyOf(nodesArray, nodesArray.length,
+		    String[].class);
+
+	    // Print node list
+	    for (String node : nodes) {
+		System.out.println(node);
+	    }
 	}
 
-	if (ret) {
-	    System.out.println(args[1] + " : connected.");
-	} else {
-	    System.out.println(args[1] + " : not connected.");
+	@Override
+	public String getUsage() {
+	    return getCommandName() + " list user@server.com";
 	}
 
-    }
+	@Override
+	public String getCommandName() {
+	    return "node";
+	}
+    };
 
-    /**
-     * Process the "node" action command
-     * 
-     * @param args
-     *            The full CLI arguments.
-     */
-    private void handleNode(String[] args) {
-	if (args.length < 3) {
-	    System.out.println("rosxmpp node list user@server.com");
-	    printUsage();
-	    System.exit(-1);
+    CommandHandler exposeCommand = new CommandHandler() {
+	@Override
+	public void handleCommand(String[] args) {
+	    if (args.length < 3) {
+		System.out
+			.println("rosxmpp expose http://localhost:11311 user@server.com");
+		printUsage();
+		System.exit(-1);
+	    }
+
+	    String[] userServer = args[2].split("@");
+	    String user = userServer[0];
+	    String server = userServer[1];
+	    String rosMasterUri = args[1];
+
+	    Object[] params = new Object[] { rosMasterUri };
+	    Integer ret = null;
+	    try {
+		ret = (Integer) executeBridgeMethod(user, server,
+			"exposeRosMaster", params);
+	    } catch (XmlRpcException e) {
+		System.out.println("Failed to expose ros master at  "
+			+ rosMasterUri + " for " + user + "@" + server);
+		System.exit(-1);
+	    }
+
+	    if (ret <= 0) {
+		System.out.println("Failed to expose ros master "
+			+ rosMasterUri + " over XMPP. " + ret);
+	    } else {
+		System.out.println("Ros master " + rosMasterUri
+			+ " is now reachable over XMPP.");
+	    }
 	}
 
-	String[] userServer = args[2].split("@");
-	String user = userServer[0];
-	String server = userServer[1];
-
-	// Call method
-	Object[] params = new Object[] {};
-	Object[] nodesArray = null;
-
-	try {
-	    nodesArray = (Object[]) executeBridgeMethod(user, server,
-		    "getAvailableNodes", params);
-	} catch (XmlRpcException e) {
-	    System.out
-		    .println("Failed to retreive the list of available master nodes "
-			    + user + "@" + server);
-	    System.exit(-1);
+	@Override
+	public String getUsage() {
+	    return getCommandName() + " http://localhost:11311 user@server.com";
 	}
 
-	String[] nodes = Arrays.copyOf(nodesArray, nodesArray.length,
-		String[].class);
+	@Override
+	public String getCommandName() {
+	    return "expose";
+	}
+    };
 
-	// Print node list
-	for (String node : nodes) {
-	    System.out.println(node);
+    CommandHandler topicCommand = new CommandHandler() {
+
+	@Override
+	public void handleCommand(String[] args) {
+	    if (args.length < 3) {
+		System.out
+			.println("rosxmpp topic [list, proxy] remote@server.com local@server.com");
+		printUsage();
+		System.exit(-1);
+	    }
+
+	    String remoteUserServer = args[2];
+	    String[] localUserServer = args[3].split("@");
+	    String localUser = localUserServer[0];
+	    String localServer = localUserServer[1];
+
+	    Object[] params = new Object[] { remoteUserServer };
+	    Object[] response = null;
+
+	    try {
+		response = (Object[]) executeBridgeMethod(localUser,
+			localServer, "getPublishedTopics", params);
+	    } catch (XmlRpcException e) {
+		System.out.println("Failed to retreive topic list at "
+			+ remoteUserServer + " using account " + args[3]);
+		System.exit(-1);
+	    }
+
+	    int status = ((Integer) response[0]).intValue();
+	    String statusMessage = ((String) response[1]);
+	    System.out.println("Status " + status + " \"" + statusMessage
+		    + "\"");
+
+	    Object[] result = (Object[]) response[2];
+	    for (int i = 0; i < result.length; i++) {
+		Object[] topicTypePair = (Object[]) result[i];
+		System.out.println("Topic " + (String) topicTypePair[0]
+			+ " type " + (String) topicTypePair[1]);
+	    }
 	}
 
-    }
-
-    /**
-     * Process the "expose" action command
-     * 
-     * @param args
-     *            The full CLI arguments.
-     */
-    private void handleExpose(String[] args) {
-	if (args.length < 3) {
-	    System.out
-		    .println("rosxmpp expose http://localhost:11311 user@server.com");
-	    printUsage();
-	    System.exit(-1);
+	@Override
+	public String getUsage() {
+	    return getCommandName() + " [list, proxy] remote@server.com local@server.com";
 	}
 
-	String[] userServer = args[2].split("@");
-	String user = userServer[0];
-	String server = userServer[1];
-	String rosMasterUri = args[1];
-
-	Object[] params = new Object[] { rosMasterUri };
-	Integer ret = null;
-	try {
-	    ret = (Integer) executeBridgeMethod(user, server,
-		    "exposeRosMaster", params);
-	} catch (XmlRpcException e) {
-	    System.out.println("Failed to expose ros master at  "
-		    + rosMasterUri + " for " + user + "@" + server);
-	    System.exit(-1);
+	@Override
+	public String getCommandName() {
+	    return "topic";
 	}
-
-	if (ret <= 0) {
-	    System.out.println("Failed to expose ros master " + rosMasterUri
-		    + " over XMPP. " + ret);
-	} else {
-	    System.out.println("Ros master " + rosMasterUri
-		    + " is now reachable over XMPP.");
-	}
-    }
-
-    /**
-     * Process the "topic" action command
-     * 
-     * @param args
-     *            The full CLI arguments.
-     */
-    private void handleTopic(String[] args) {
-	if (args.length < 3) {
-	    System.out
-		    .println("rosxmpp topic [list, proxy] remote@server.com local@server.com");
-	    printUsage();
-	    System.exit(-1);
-	}
-
-	String remoteUserServer = args[2];
-	String[] localUserServer = args[3].split("@");
-	String localUser = localUserServer[0];
-	String localServer = localUserServer[1];
-
-	Object[] params = new Object[] { remoteUserServer };
-	Object[] response = null;
-
-	try {
-	    response = (Object[]) executeBridgeMethod(localUser, localServer,
-		    "getPublishedTopics", params);
-	} catch (XmlRpcException e) {
-	    System.out.println("Failed to retreive topic list at "
-		    + remoteUserServer + " using account " + args[3]);
-	    System.exit(-1);
-	}
-
-	int status = ((Integer) response[0]).intValue();
-	String statusMessage = ((String) response[1]);
-	System.out.println("Status " + status + " \"" + statusMessage + "\"");
-
-	Object[] result = (Object[]) response[2];
-	for (int i = 0; i < result.length; i++) {
-	    Object[] topicTypePair = (Object[]) result[i];
-	    System.out.println("Topic " + (String) topicTypePair[0] + " type "
-		    + (String) topicTypePair[1]);
-	}
-    }
-
-    /**
-     * Prints general usage help.
-     */
-    private void printUsage() {
-	System.out.println("rosxmpp [action] [action option]");
-    }
+    };
 
     /**
      * @param args
