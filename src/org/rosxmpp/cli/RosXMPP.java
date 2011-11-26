@@ -7,18 +7,14 @@ import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStreamReader;
-import java.lang.reflect.UndeclaredThrowableException;
 import java.net.MalformedURLException;
-import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Map.Entry;
 
 import org.apache.xmlrpc.XmlRpcException;
 import org.apache.xmlrpc.client.XmlRpcClient;
-import org.apache.xmlrpc.client.XmlRpcClientException;
 import org.rosxmpp.connection.client.XmlRpcServerProxy;
-import org.rosxmpp.connection.server.RosXMPPBridgeConnection;
 
 /**
  * This class implements the main interaction logic with the user from the
@@ -28,9 +24,8 @@ import org.rosxmpp.connection.server.RosXMPPBridgeConnection;
  * 
  */
 public class RosXMPP {
-    private static final String PROGRAM_NAME = "rosxmpp";
     HashMap<String, CommandHandler> commands = new HashMap<String, CommandHandler>();
-    
+
     public RosXMPP(String[] args) {
 	commands.put(connectCommand.getCommandName(), connectCommand);
 	commands.put(disconnectCommand.getCommandName(), disconnectCommand);
@@ -45,7 +40,7 @@ public class RosXMPP {
 	    printUsage();
 	    System.exit(-1);
 	}
-	
+
 	handler.handleCommand(args);
     }
 
@@ -54,11 +49,11 @@ public class RosXMPP {
      */
     private void printUsage() {
 	System.out.println("rosxmpp [action] [action option]");
-	for (Entry<String, CommandHandler> entry: commands.entrySet()) {
+	for (Entry<String, CommandHandler> entry : commands.entrySet()) {
 	    System.out.println("        " + entry.getValue().getUsage());
 	}
     }
-    
+
     /**
      * Get a server connection from a user and host information. This relies on
      * /var/run/rosxmpp/user@host to record port assignment.
@@ -67,12 +62,17 @@ public class RosXMPP {
      * @throws MalformedURLException
      */
     private XmlRpcServerProxy getServerConnection(String user, String server)
-	    throws FileNotFoundException, MalformedURLException {
+	    throws XmlRpcException {
 	File pidFile = new File("/var/run/rosxmpp/" + user + "@" + server);
 
 	// Read port on which the server should run
 	FileInputStream fstream = null;
-	fstream = new FileInputStream(pidFile);
+	try {
+	    fstream = new FileInputStream(pidFile);
+	} catch (FileNotFoundException e) {
+	    throw new XmlRpcException("Failed to open file "
+		    + pidFile.getPath());
+	}
 
 	DataInputStream in = new DataInputStream(fstream);
 	BufferedReader br = new BufferedReader(new InputStreamReader(in));
@@ -81,12 +81,17 @@ public class RosXMPP {
 	    port = br.readLine();
 	    in.close();
 	} catch (IOException e1) {
-	    // TODO Auto-generated catch block
-	    e1.printStackTrace();
+	    throw new XmlRpcException("Failed to read port number from " + pidFile.getPath());
 	}
+
 	XmlRpcServerProxy clientConnection = null;
-	clientConnection = new XmlRpcServerProxy("http://localhost:" + port
-		+ "/xmlrpc");
+	String uri = "http://localhost:" + port + "/xmlrpc";
+	try {
+	    clientConnection = new XmlRpcServerProxy(uri);
+	} catch (MalformedURLException e) {
+	    throw new XmlRpcException("Bad URI to ROS master at " + uri);
+	}
+
 	return clientConnection;
     }
 
@@ -98,37 +103,12 @@ public class RosXMPP {
      * @param server
      * @return Return a XmlRpcClient element for accessing the rosxmppbridge
      *         server for user@server
+     * @throws XmlRpcException
      */
-    private XmlRpcClient getRpcClient(String user, String server) {
-	XmlRpcServerProxy client = null;
-	try {
-	    client = getServerConnection(user, server);
-	} catch (FileNotFoundException e) {
-	    System.out.println("Failed to access rosxmppbridge server.");
-	} catch (MalformedURLException e) {
-	    System.out.println("Failed to access rosxmppbridge server.");
-	}
-
-	return client.getRpcClient();
-    }
-
-    /**
-     * Return a server proxy object on which methods can be called directly.
-     * 
-     * @param user
-     *            The user that the rosxmppbridge is serving.
-     * @param server
-     *            The server for which the rosxmppbridge is serving.
-     * @return Return a server proxy object on which methods can be called
-     *         directly.
-     * @throws FileNotFoundException
-     * @throws MalformedURLException
-     */
-    private RosXMPPBridgeConnection getServerProxy(String user, String server)
-	    throws FileNotFoundException, MalformedURLException {
+    private XmlRpcClient getRpcClient(String user, String server)
+	    throws XmlRpcException {
 	XmlRpcServerProxy client = getServerConnection(user, server);
-	return (RosXMPPBridgeConnection) client
-		.getDynamicProxy(RosXMPPBridgeConnection.class);
+	return client.getRpcClient();
     }
 
     /**
@@ -199,30 +179,7 @@ public class RosXMPP {
 	    String server = userServer[1];
 	    String passwd = args[2];
 
-	    // Make sure there is no connected server
-	    RosXMPPBridgeConnection serverConnection = null;
-	    if (isPidFileExists(user, server)) {
-		try {
-		    serverConnection = getServerProxy(user, server);
-		} catch (FileNotFoundException e) {
-		    // TODO Auto-generated catch block
-		    e.printStackTrace();
-		} catch (MalformedURLException e) {
-		    // TODO Auto-generated catch block
-		    e.printStackTrace();
-		}
-
-		if (serverConnection.isConnected()) {
-		    System.out.println("Already connected to " + server
-			    + " as " + user);
-		    return;
-		}
-
-		serverConnection.connect(server, user, passwd, PROGRAM_NAME);
-	    } else {
-		System.out.println("Starting new server");
-		startRosXmppServer(server, user, passwd);
-	    }
+	    startRosXmppServer(server, user, passwd);
 	}
 
 	@Override
@@ -446,7 +403,8 @@ public class RosXMPP {
 
 	@Override
 	public String getUsage() {
-	    return getCommandName() + " [list, proxy] remote@server.com local@server.com";
+	    return getCommandName()
+		    + " [list, proxy] remote@server.com local@server.com";
 	}
 
 	@Override
