@@ -370,7 +370,15 @@ public class RosXMPP {
 		printUsage();
 		System.exit(-1);
 	    }
+	    
+	    if (args[1].equals("list")) {
+	        handleList(args);
+	    } else if (args[1].equals("proxy")) {
+		handleProxy(args);
+	    }
+	}
 
+	public void handleList(String[] args) {
 	    String remoteUserServer = args[2];
 	    String[] localUserServer = args[3].split("@");
 	    String localUser = localUserServer[0];
@@ -400,7 +408,31 @@ public class RosXMPP {
 			+ " type " + (String) topicTypePair[1]);
 	    }
 	}
-
+	
+	public void handleProxy(String[] args) {    
+	    String remoteUserServer = args[2];
+	    String[] localUserServer = args[3].split("@");
+	    String localUser = localUserServer[0];
+	    String localServer = localUserServer[1];
+	    
+	    Object response = null;
+	    try {
+		response = executeBridgeMethod(localUser,
+			localServer, "proxyRemoteTopics",  new Object[] { remoteUserServer });
+	    } catch (XmlRpcException e) {
+		System.out.println("Failed to proxy remote topics at "
+			+ remoteUserServer + " using account " + args[3]);
+		System.exit(-1);
+	    }
+	    
+	    if ((Integer) response <= 0) {
+		System.out.println("Failed to proxy remote topics at "
+			+ remoteUserServer + " using account " + args[3]);
+	    } else {
+		System.out.println("Remote topics for " + remoteUserServer + " are now available locally." );
+	    }
+	}
+	
 	@Override
 	public String getUsage() {
 	    return getCommandName()

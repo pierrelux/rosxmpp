@@ -3,6 +3,7 @@ package org.rosxmpp.connection.server;
 import java.io.BufferedWriter;
 import java.io.File;
 import java.io.FileWriter;
+import java.net.MalformedURLException;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
@@ -11,6 +12,7 @@ import java.util.logging.Logger;
 import org.activequant.xmpprpc.JabberRpcClient;
 import org.activequant.xmpprpc.JabberRpcServer;
 import org.apache.xmlrpc.XmlRpcException;
+import org.apache.xmlrpc.client.XmlRpcClient;
 import org.jivesoftware.smack.ConnectionListener;
 import org.jivesoftware.smack.Roster;
 import org.jivesoftware.smack.RosterEntry;
@@ -18,6 +20,7 @@ import org.jivesoftware.smack.RosterListener;
 import org.jivesoftware.smack.XMPPConnection;
 import org.jivesoftware.smack.XMPPException;
 import org.jivesoftware.smack.packet.Presence;
+import org.rosxmpp.connection.client.XmlRpcServerProxy;
 
 /**
  * This class manages interaction to a given XMPP server. The CLI rosxmpp
@@ -27,6 +30,8 @@ import org.jivesoftware.smack.packet.Presence;
  * 
  */
 public class RosXMPPBridgeConnectionManager implements RosXMPPBridgeConnection {
+    private static final String DEFAULT_ROS_MASTER_URI = "http://localhost:11311";
+
     private static final String PATH_PIDFILES = "/var/run/rosxmpp/";
 
     private static Logger logger = Logger.getLogger("org.rosxmpp.cli");
@@ -53,17 +58,24 @@ public class RosXMPPBridgeConnectionManager implements RosXMPPBridgeConnection {
     // the XML-RPC CLI interface
     private File pidFile;
 
+    // A single instance of a Slave API handler deals with all topic
+    // subscriptions
+    SlaveApiHandler slaveHandler;
+
+    // Instead of instantiating new proxies to ros master, we maintain them here
+    HashMap<String, XmlRpcServerProxy> rosServerProxies = new HashMap<String, XmlRpcServerProxy>();
+
     // XMPP connection to the XMPP server
     private XMPPConnection connection;
 
     // Can map multiple ROS cores using this rosxmppbridge
     private HashMap<String, JabberRpcServer> jabberRpcServers = new HashMap<String, JabberRpcServer>();
 
-    // To avoid re-creating a new JabberRpcClient for every remote call, 
-    // keep them in memory for the given remote node. 
+    // To avoid re-creating a new JabberRpcClient for every remote call,
+    // keep them in memory for the given remote node.
     // TODO : Auto-remove when node disconnects. Implies node presence.
     private HashMap<String, JabberRpcClient> jabberRpcClients = new HashMap<String, JabberRpcClient>();
-    
+
     /**
      * We use a connection listener to automatically delete the entry under
      * /var/run/rosxmpp that indicates the port of the XML-RPC webserver in
@@ -101,41 +113,78 @@ public class RosXMPPBridgeConnectionManager implements RosXMPPBridgeConnection {
      * Used for housekeeping on the JabberRpcClient instances.
      */
     private RosterListener rosterListener = new RosterListener() {
-        
-        @Override
-        public void presenceChanged(Presence presence) {
-            logger.info("Node " + presence.getFrom() + " is now " + presence.getType());
-            if (presence.isAvailable() == false) {
-        	if (jabberRpcClients.get(presence.getFrom()) != null) {
-            	    logger.info("Getting rid of Jabber-RPC client connection for " 
-        		    + presence.getFrom() + " which is now offline.");
-        	    jabberRpcClients.remove(presence.getFrom());
-        	}
-            }
-        }
-        
-        @Override
-        public void entriesUpdated(Collection<String> addresses) {
-    	// TODO Auto-generated method stub
-    	
-        }
-        
-        @Override
-        public void entriesDeleted(Collection<String> addresses) {
-    	// TODO Auto-generated method stub
-    	
-        }
-        
-        @Override
-        public void entriesAdded(Collection<String> addresses) {
-    	// TODO Auto-generated method stub
-    	
-        }
+
+	@Override
+	public void presenceChanged(Presence presence) {
+	    logger.info("Node " + presence.getFrom() + " is now "
+		    + presence.getType());
+	    if (presence.isAvailable() == false) {
+		if (jabberRpcClients.get(presence.getFrom()) != null) {
+		    logger
+			    .info("Getting rid of Jabber-RPC client connection for "
+				    + presence.getFrom()
+				    + " which is now offline.");
+		    jabberRpcClients.remove(presence.getFrom());
+		}
+	    }
+	}
+
+	@Override
+	public void entriesUpdated(Collection<String> addresses) {
+	    // TODO Auto-generated method stub
+
+	}
+
+	@Override
+	public void entriesDeleted(Collection<String> addresses) {
+	    // TODO Auto-generated method stub
+
+	}
+
+	@Override
+	public void entriesAdded(Collection<String> addresses) {
+	    // TODO Auto-generated method stub
+
+	}
     };
+
     /**
      * This class is implemented as a singleton.
      */
     private RosXMPPBridgeConnectionManager() {
+    }
+
+    /**
+     * Get, or create, a JabberRpcClient for the remote user
+     * 
+     * @param remoteUser
+     *            The user running a Jabber-RPC server
+     * @return a JabberRpcClient for the remote user
+     */
+    private JabberRpcClient getJabberRpcClient(String remoteUser) {
+	JabberRpcClient xmppRpcClient = jabberRpcClients.get(remoteUser);
+	if (xmppRpcClient != null) {
+	    return xmppRpcClient;
+	}
+
+	// Create a Jabber-RPC client
+	try {
+	    xmppRpcClient = new JabberRpcClient(connection, remoteUser + "/"
+		    + ROSXMPP_RPC_RESOURCE);
+	} catch (Exception e) {
+	    logger.severe("Failed to create a jabber-rcp client.");
+	    logger.severe(e.getMessage());
+	    return null;
+	}
+
+	// Start the client thread
+	xmppRpcClient.start();
+
+	jabberRpcClients.put(remoteUser, xmppRpcClient);
+	logger.info("User " + remoteUser
+		+ " added for instantiated Jabber-RPC client");
+
+	return xmppRpcClient;
     }
 
     /**
@@ -199,7 +248,7 @@ public class RosXMPPBridgeConnectionManager implements RosXMPPBridgeConnection {
 
 	// Subscribe to Roster events
 	connection.getRoster().addRosterListener(rosterListener);
-	
+
 	// Write a dummy file under /var/run/rosxmpp to keep track of the active
 	// connection
 	pidFile = new File(PATH_PIDFILES + user + "@" + server);
@@ -212,6 +261,9 @@ public class RosXMPPBridgeConnectionManager implements RosXMPPBridgeConnection {
 	    logger.severe("Failed to write PID file " + pidFile.getName());
 	    return -1;
 	}
+
+	// Start a Slave API handlers
+	slaveHandler = new SlaveApiHandler();
 
 	return 0;
     }
@@ -234,7 +286,7 @@ public class RosXMPPBridgeConnectionManager implements RosXMPPBridgeConnection {
 	logger.info("Handling getAvailableNodes request");
 
 	Roster roster = connection.getRoster();
-	
+
 	ArrayList<String> availableNodes = new ArrayList<String>();
 	for (RosterEntry entry : roster.getEntries()) {
 	    String user = entry.getUser();
@@ -246,46 +298,16 @@ public class RosXMPPBridgeConnectionManager implements RosXMPPBridgeConnection {
 	return availableNodes.toArray(new String[availableNodes.size()]);
     }
 
-    /**
-     * Get, or create, a JabberRpcClient for the remote user
-     * @param remoteUser The user running a Jabber-RPC server
-     * @return a JabberRpcClient for the remote user
-     */
-    private JabberRpcClient getJabberRpcClient(String remoteUser)
-    {
-	JabberRpcClient xmppRpcClient = jabberRpcClients.get(remoteUser);
-	if (xmppRpcClient != null) {
-	    return xmppRpcClient;
-	}
-	    
-	// Create a Jabber-RPC client
-	try {
-	    xmppRpcClient = new JabberRpcClient(connection, remoteUser + "/"
-		    + ROSXMPP_RPC_RESOURCE);
-	} catch (Exception e) {
-	    logger.severe("Failed to create a jabber-rcp client.");
-	    logger.severe(e.getMessage());
-	    return null;
-	}
-
-	// Start the client thread
-	xmppRpcClient.start();
-	
-	jabberRpcClients.put(remoteUser, xmppRpcClient);
-	logger.info("User " + remoteUser + " added for instantiated Jabber-RPC client");
-	
-	return xmppRpcClient;
-    }
-    
     @Override
     public Object[] getPublishedTopics(String remoteUser) {
-	logger.info("Handling getPublishedTopics request to node "
+	logger
+		.info("Handling getPublishedTopics request to node "
 			+ remoteUser);
 
 	JabberRpcClient xmppRpcClient = getJabberRpcClient(remoteUser);
 	if (xmppRpcClient == null) {
 	    return new Object[] { (int) -1,
-	    "Failed to start Jabber-RPC client." };
+		    "Failed to start Jabber-RPC client." };
 	}
 
 	Object[] topics = null;
@@ -294,22 +316,23 @@ public class RosXMPPBridgeConnectionManager implements RosXMPPBridgeConnection {
 	// Empty string below is to obtain all topics (root node)
 	params.add("");
 	try {
-	    logger.info("Calling master.getPublishedTopics over Jabber-RPC ...");
-	    
-	    topics = (Object[]) xmppRpcClient.execute(
-		    MASTER_NAMESPACE + ".getPublishedTopics", params);
-	    
+	    logger
+		    .info("Calling master.getPublishedTopics over Jabber-RPC ...");
+
+	    topics = (Object[]) xmppRpcClient.execute(MASTER_NAMESPACE
+		    + ".getPublishedTopics", params);
+
 	} catch (XmlRpcException e) {
 	    logger.severe("Failed to call remote method getPublishedTopics on "
 		    + remoteUser + " over Jabber-RPC.");
 	    logger.severe(e.getMessage());
-	    
+
 	    xmppRpcClient.stop();
-	    
+
 	    return new Object[] { (int) -1,
 		    "Failed to call getPublishedTopics on Jabber-RPC server." };
 	}
-	
+
 	return topics;
     }
 
@@ -350,6 +373,28 @@ public class RosXMPPBridgeConnectionManager implements RosXMPPBridgeConnection {
 	return 1;
     }
 
+    /**
+     * Get or create a proxy to a ROS master.
+     * @param masterUri The uri to the ros master.
+     * @return A instance of an XmlRpcClient to the specified server.
+     */
+    private XmlRpcClient getRosMasterRpcClient(String masterUri) {
+	XmlRpcServerProxy proxy = rosServerProxies.get(masterUri);
+	if (proxy == null) {
+	    XmlRpcServerProxy rosServerProxy = null;
+	    try {
+		rosServerProxy = new XmlRpcServerProxy(masterUri);
+	    } catch (MalformedURLException e) {
+		logger.severe("Failed to create proxy to ROS master at "
+			+ masterUri);
+	    }
+	    rosServerProxies.put(masterUri, rosServerProxy);
+	    return rosServerProxy.getRpcClient();
+	}
+
+	return proxy.getRpcClient();
+    }
+
     @Override
     public int proxyRemoteTopics(String remoteNode) {
 	// Retrieve the list of remote topics
@@ -361,20 +406,22 @@ public class RosXMPPBridgeConnectionManager implements RosXMPPBridgeConnection {
 	    return -1;
 	}
 
+	// Iterate over all remote topics and register them locally
 	Object[] result = (Object[]) response[2];
 	for (int i = 0; i < result.length; i++) {
 	    Object[] topicTypePair = (Object[]) result[i];
-	    String topic = (String) topicTypePair[0];
+	    String topic = ((String) topicTypePair[0]) + "_xmppremote"; // FIXME Get rid of this suffix
 	    String type = (String) topicTypePair[1];
 
-	    // Start a XML-RPC slave handler
-	    // SlaveApiHandler slave = new SlaveApiHandler(callerid, topic,
-	    // type)
-	    // URL slaveUri = slave.getUri();
-
-	    // Register the remote topics name and types locally
-	    // masterApi.registerPublisher(ROSXMPP_CALLERID, topic, type,
-	    // slaveUri);
+	    // Register the remote topics name and types on the ROS master
+	    XmlRpcClient client = getRosMasterRpcClient(DEFAULT_ROS_MASTER_URI);
+	    Object[] params = new Object[] {ROSXMPP_CALLERID, topic, type, slaveHandler.getUri()};
+	    try {
+		client.execute("registerPublisher", params);
+	    } catch (XmlRpcException e) {
+		logger.severe("Failed to invoke registerPublisher.");
+		return -1;
+	    }
 	}
 
 	return status;
