@@ -16,7 +16,7 @@ import org.apache.xmlrpc.server.XmlRpcServer;
 import org.apache.xmlrpc.server.XmlRpcServerConfigImpl;
 import org.apache.xmlrpc.webserver.WebServer;
 
-public class SlaveApiHandler implements Slave {
+public class SlaveApiServer implements Slave {
     private static final int MIN_PORT_NUMBER = 40000;
     private WebServer webServer;
     private static Logger logger = Logger.getLogger("org.rosxmpp.cli");
@@ -33,12 +33,10 @@ public class SlaveApiHandler implements Slave {
 	// Map callerid to server sockets.
 	HashMap<String, TcpRosServer> channels = new HashMap<String, TcpRosServer>();
 	private String topic;
-	private String type;
 	private String remoteMasterJid;
 	
 	public TopicHandler(String topic, String type, String remoteMasterJid) {
 	    this.topic = topic;
-	    this.type = type;
 	    this.remoteMasterJid = remoteMasterJid;
 	}
 	
@@ -63,7 +61,7 @@ public class SlaveApiHandler implements Slave {
 		    logger.info("Creating TCPROS channel for callerid " + callerId);
 		    TcpRosServer tcpRosServer = null;
 		    try {
-			tcpRosServer = new TcpRosServer(AvailablePortFinder.getNextAvailable(MIN_PORT_NUMBER), remoteMasterJid);
+			tcpRosServer = new TcpRosServer(AvailablePortFinder.getNextAvailable(MIN_PORT_NUMBER), topic, remoteMasterJid);
 			tcpRosServer.start();	
 			logger.info("TcpRosServer started");
 		    } catch (TcpRosServerException e) {
@@ -99,7 +97,7 @@ public class SlaveApiHandler implements Slave {
     
     HashMap<String, TopicHandler> topicHandlers = new HashMap<String, TopicHandler>();
     
-    public SlaveApiHandler() {
+    public SlaveApiServer() {
 
 	startWebserver();
 

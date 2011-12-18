@@ -7,7 +7,6 @@ import org.apache.xmlrpc.client.XmlRpcClient;
 import org.apache.xmlrpc.client.XmlRpcClientConfigImpl;
 import org.apache.xmlrpc.client.XmlRpcCommonsTransportFactory;
 import org.apache.xmlrpc.client.util.ClientFactory;
-import org.rosxmpp.connection.server.RosXMPPBridgeConnection;
 
 public class XmlRpcServerProxy {
 	private XmlRpcClient client;
@@ -31,6 +30,7 @@ public class XmlRpcServerProxy {
         factory = new ClientFactory(client);
     }
 
+	@SuppressWarnings("unchecked")
 	public Object getDynamicProxy(Class remoteObjectClass) {
         return factory.newInstance(remoteObjectClass);
 	}

@@ -86,9 +86,9 @@ public class JingleCommunication {
     public static void main(String args[]) {
 	Connection.DEBUG_ENABLED = true;
 
-	JingleCommunication jingle1 = new JingleCommunication("localhost", "pierre-luc", "test", "ros/topic1");
-	new JingleCommunication("localhost", "rodney", "brooks", "ros/topic2");
-	jingle1.startOutgoingChannel("rodney@localhost/ros/topic2");
+	JingleCommunication jingle1 = new JingleCommunication("merlin", "pierre-luc", "test", "ros/topic1");
+	new JingleCommunication("merlin", "rodney", "brooks", "ros/topic2");
+	jingle1.startOutgoingChannel("rodney@merlin/ros/topic2");
 
 	while(true) {
 

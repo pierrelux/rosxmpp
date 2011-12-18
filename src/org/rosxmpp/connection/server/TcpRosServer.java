@@ -12,9 +12,10 @@ public class TcpRosServer extends Thread {
     private ServerSocket serverSocket = null;
     private int maxConnections = 100;
     private String remoteMasterJid;
+    private String topic;
     private static Logger logger = Logger.getLogger("org.rosxmpp.cli");
 
-    public TcpRosServer(int port, String remoteMasterJid) throws TcpRosServerException {
+    public TcpRosServer(int port, String topic, String remoteMasterJid) throws TcpRosServerException {
 	logger.info("Attempting to create a local server socket on port " + port);
 	try {
 	    serverSocket = new ServerSocket(port);
@@ -23,6 +24,7 @@ public class TcpRosServer extends Thread {
 	}
 	
 	this.remoteMasterJid = remoteMasterJid;
+	this.topic = topic;
     }
 
     public String getHostname() throws UnknownHostException
@@ -55,8 +57,9 @@ public class TcpRosServer extends Thread {
 	 
 	    logger.info("Client accepted " + server.getInetAddress().getCanonicalHostName());
 	    
-	    // Initiate Jingle session to remote peer
-	    RosXMPPBridgeConnectionManager.getInstance().startOutgoingJingleChannel(remoteMasterJid);
+	    // FIXME This whole class might be implemented inside SlaveApiServer instead
+	    RosXMPPBridgeConnectionManager.getInstance().establishJingleRosChannel(remoteMasterJid, topic);
+
 	}
     }
 }

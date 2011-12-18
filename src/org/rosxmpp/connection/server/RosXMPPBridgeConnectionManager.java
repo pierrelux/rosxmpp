@@ -25,8 +25,10 @@ import org.jivesoftware.smackx.jingle.JingleManager;
 import org.jivesoftware.smackx.jingle.JingleSession;
 import org.jivesoftware.smackx.jingle.JingleSessionRequest;
 import org.jivesoftware.smackx.jingle.listeners.JingleSessionRequestListener;
+import org.jivesoftware.smackx.jingle.listeners.JingleTransportListener;
 import org.jivesoftware.smackx.jingle.media.JingleMediaManager;
 import org.jivesoftware.smackx.jingle.nat.BasicTransportManager;
+import org.jivesoftware.smackx.jingle.nat.TransportCandidate;
 import org.rosxmpp.connection.client.XmlRpcServerProxy;
 import org.rosxmpp.transport.UDTMediaManager;
 
@@ -68,7 +70,7 @@ public class RosXMPPBridgeConnectionManager implements RosXMPPBridgeConnection {
 
     // A single instance of a Slave API handler deals with all topic
     // subscriptions
-    SlaveApiHandler slaveHandler;
+    SlaveApiServer slaveHandler;
 
     // Instead of instantiating new proxies to ros master, we maintain them here
     HashMap<String, XmlRpcServerProxy> rosServerProxies = new HashMap<String, XmlRpcServerProxy>();
@@ -86,6 +88,10 @@ public class RosXMPPBridgeConnectionManager implements RosXMPPBridgeConnection {
     // keep them in memory for the given remote node.
     // TODO : Auto-remove when node disconnects. Implies node presence.
     private HashMap<String, JabberRpcClient> jabberRpcClients = new HashMap<String, JabberRpcClient>();
+    
+    // Maintain the active jingle sessions in this map. The key is the topic being served
+    // Sessions should be removed if no topic request is received within a time interval over Jabber
+    private HashMap<String, JingleSession> jingleSessions = new HashMap<String, JingleSession>();
 
     /**
      * We use a connection listener to automatically delete the entry under
@@ -192,8 +198,7 @@ public class RosXMPPBridgeConnectionManager implements RosXMPPBridgeConnection {
 	xmppRpcClient.start();
 
 	jabberRpcClients.put(remoteUser, xmppRpcClient);
-	logger.info("User " + remoteUser + "/"
-		    + ROSXMPP_RPC_RESOURCE
+	logger.info("User " + remoteUser + "/" + ROSXMPP_RPC_RESOURCE
 		+ " added for instantiated Jabber-RPC client");
 
 	return xmppRpcClient;
@@ -273,11 +278,11 @@ public class RosXMPPBridgeConnectionManager implements RosXMPPBridgeConnection {
 	    logger.severe("Failed to write PID file " + pidFile.getName());
 	    return -1;
 	}
-	
+
 	initializeJingleServer();
 
 	// Start a Slave API handlers
-	slaveHandler = new SlaveApiHandler();
+	slaveHandler = new SlaveApiServer();
 
 	return 0;
     }
@@ -351,10 +356,11 @@ public class RosXMPPBridgeConnectionManager implements RosXMPPBridgeConnection {
     }
 
     /**
-     * Initializes a Jingle listener for TCPROS tunnelling
+     * Initialises a Jingle listener for TCPROS tunnelling
      */
-    private void initializeJingleServer()
-    {
+    private void initializeJingleServer() {
+	JingleManager.setJingleServiceEnabled();
+
 	BasicTransportManager transportManager = new BasicTransportManager();
 	List<JingleMediaManager> mediaManagers = new ArrayList<JingleMediaManager>();
 	mediaManagers.add(new UDTMediaManager(transportManager));
@@ -365,33 +371,33 @@ public class RosXMPPBridgeConnectionManager implements RosXMPPBridgeConnection {
 	    public void sessionRequested(JingleSessionRequest request) {
 		try {
 		    logger.info("Accepting Jingle session requests ...");
-		    
+
 		    // Accept the call
 		    JingleSession incoming = request.accept();
 		    logger.info("Jingle session request accepted.");
 
-		    // Keep track of the session id somewhere 
-		    
+		    // Keep track of the session id somewhere
+
 		    // Start the call
 		    incoming.startIncoming();
-		}
-		catch (XMPPException e) {
-		   logger.severe("Failed to accept jingle session requests");
-		   e.printStackTrace();
+		} catch (XMPPException e) {
+		    logger.severe("Failed to accept jingle session requests");
+		    e.printStackTrace();
 		}
 	    }
 	});
-	
-	logger.info("Jingle server initialized");
+
+	logger.info("Jingle server initialized for " + connection.getUser());
     }
-    
+
     /**
-     * Initiate a jingle session to a remote ros master
-     * TODO Find another way to avoid exposing this method
-     * @param remoteMaster The remote ros master jid to contact
+     * Initiate a jingle session to a remote ros master TODO Find another way to
+     * avoid exposing this method
+     * 
+     * @param remoteMaster
+     *            The remote ros master jid to contact
      */
-    public void startOutgoingJingleChannel(String remoteMaster)
-    {
+    public JingleSession createOutgoingJingleChannel(String remoteMaster) {
 	logger.info("Initiating Jingle session to " + remoteMaster);
 	JingleSession outgoing = null;
 	try {
@@ -400,9 +406,57 @@ public class RosXMPPBridgeConnectionManager implements RosXMPPBridgeConnection {
 	    // TODO Auto-generated catch block
 	    e.printStackTrace();
 	}
-	outgoing.startOutgoing();	
+	return outgoing;
     }
+
     
+    public int establishJingleRosChannel(final String remoteMasterJid,
+	    final String topicName) {
+	// Initiate Jingle session to remote peer
+	JingleSession jingleSession = createOutgoingJingleChannel(remoteMasterJid);
+	jingleSessions.put(topicName, jingleSession);
+	
+	jingleSession.addTransportListener(new JingleTransportListener() {
+	    @Override
+	    public void transportEstablished(TransportCandidate arg0,
+		    TransportCandidate arg1) {
+		logger.info("Jingle ICE UDP transport established");
+
+		// Send request to remote ros master to start TCPROS flow into
+		// this session
+		JabberRpcClient client = getJabberRpcClient(remoteMasterJid);
+		
+		ArrayList<Object> params = new ArrayList<Object>();
+		params.add(arg0.getSessionId());
+		params.add(topicName);
+		
+		try {
+		    int ret = (Integer) client.execute(MASTER_NAMESPACE + ".requestTopic", params);
+		    logger.info("Request topic returned " + ret);
+		} catch (XmlRpcException e) {
+		    // TODO Auto-generated catch block
+		    e.printStackTrace();
+		}
+	    }
+
+	    @Override
+	    public void transportClosedOnError(XMPPException arg0) {
+		logger.info("Jingle ICE UDP transport closed on error");
+	    }
+
+	    @Override
+	    public void transportClosed(TransportCandidate arg0) {
+		logger.info("Jingle ICE UDP transport closed");
+	    }
+	});
+
+	jingleSession.startOutgoing();
+	
+	logger.info("Jingle session request sent to " + remoteMasterJid + " for topic " + topicName);
+
+	return 1;
+    }
+
     @Override
     public int exposeRosMaster(String uri) {
 	logger.info("Handling exposeRosMaster request");
@@ -423,7 +477,7 @@ public class RosXMPPBridgeConnectionManager implements RosXMPPBridgeConnection {
 	}
 
 	// Expose the Master API over Jabber-RPC
-	MasterImpl masterApi = new MasterImpl(uri);
+	RosXMPPJabberServer masterApi = new RosXMPPJabberServer(uri);
 	try {
 	    jabberRpcServer.exposeObject(MASTER_NAMESPACE, masterApi);
 	} catch (XmlRpcException e1) {
@@ -436,13 +490,15 @@ public class RosXMPPBridgeConnectionManager implements RosXMPPBridgeConnection {
 
 	logger.info("Master API exposed over Jabber-RPC at "
 		+ connection.getUser());
-	
+
 	return 1;
     }
 
     /**
      * Get or create a proxy to a ROS master.
-     * @param masterUri The uri to the ros master.
+     * 
+     * @param masterUri
+     *            The uri to the ros master.
      * @return A instance of an XmlRpcClient to the specified server.
      */
     private XmlRpcClient getRosMasterRpcClient(String masterUri) {
@@ -476,30 +532,39 @@ public class RosXMPPBridgeConnectionManager implements RosXMPPBridgeConnection {
 	Object[] result = (Object[]) response[2];
 	for (int i = 0; i < result.length; i++) {
 	    Object[] topicTypePair = (Object[]) result[i];
-	    String topic = ((String) topicTypePair[0]) + "_xmppremote"; // FIXME Get rid of this suffix
+	    String topic = ((String) topicTypePair[0]) + "_xmppremote"; // FIXME
+									// Get
+									// rid
+									// of
+									// this
+									// suffix
 	    String type = (String) topicTypePair[1];
 
 	    // Register the remote topics name and types on the ROS master
 	    XmlRpcClient client = getRosMasterRpcClient(DEFAULT_ROS_MASTER_URI);
-	    Object[] params = new Object[] {ROSXMPP_CALLERID, topic, type, slaveHandler.getUri()};
+	    Object[] params = new Object[] { ROSXMPP_CALLERID, topic, type,
+		    slaveHandler.getUri() };
 	    try {
-		response = (Object[]) client.execute("registerPublisher", params);
+		response = (Object[]) client.execute("registerPublisher",
+			params);
 	    } catch (XmlRpcException e) {
 		logger.severe("Failed to invoke registerPublisher.");
 		return -1;
 	    }
-	    
+
 	    // Check if the local registration succeeded
 	    if (((Integer) response[0]).intValue() <= 0) {
-		logger.severe("Failed to register remote topic " + 
-			topic + " of type " + type + 
-			" on ROS master at " + DEFAULT_ROS_MASTER_URI);
+		logger.severe("Failed to register remote topic " + topic
+			+ " of type " + type + " on ROS master at "
+			+ DEFAULT_ROS_MASTER_URI);
 		return -1;
 	    }
-	    
+
 	    // Tell the slave handler to now serve request for this topic
-	    // TODO Check for concurrency issues (client connecting before the handler is up)
-	    slaveHandler.manageTopic(topic, type, remoteNode + "/" + ROSXMPP_RPC_RESOURCE);	    
+	    // TODO Check for concurrency issues (client connecting before the
+	    // handler is up)
+	    slaveHandler.manageTopic(topic, type, remoteNode + "/"
+		    + ROSXMPP_RPC_RESOURCE);
 	}
 
 	return status;
