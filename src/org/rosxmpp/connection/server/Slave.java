@@ -118,6 +118,6 @@ public interface Slave {
    *          list of desired protocols for communication in order of preference
    * @return protocolParams or empty list if there are no compatible protocols
    */
-  public List<Object> requestTopic(String callerId, String topic, Object[] protocols);
+  public Object[] requestTopic(String callerId, String topic, Object[] protocols);
 
 }

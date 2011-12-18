@@ -40,7 +40,7 @@ public class RosXMPPBridgeConnectionManager implements RosXMPPBridgeConnection {
     private static final String ROSXMPP_RPC_RESOURCE = "rosxmpp";
 
     // Caller id used for XML-RPC over ROS
-    public static final String ROSXMPP_CALLERID = ROSXMPP_RPC_RESOURCE;
+    public static final String ROSXMPP_CALLERID = "/rosxmpp";
 
     // Jabber-RPC namespace used for the mapping
     private static final String MASTER_NAMESPACE = "master";
@@ -181,7 +181,8 @@ public class RosXMPPBridgeConnectionManager implements RosXMPPBridgeConnection {
 	xmppRpcClient.start();
 
 	jabberRpcClients.put(remoteUser, xmppRpcClient);
-	logger.info("User " + remoteUser
+	logger.info("User " + remoteUser + "/"
+		    + ROSXMPP_RPC_RESOURCE
 		+ " added for instantiated Jabber-RPC client");
 
 	return xmppRpcClient;
@@ -399,7 +400,6 @@ public class RosXMPPBridgeConnectionManager implements RosXMPPBridgeConnection {
     public int proxyRemoteTopics(String remoteNode) {
 	// Retrieve the list of remote topics
 	Object[] response = getPublishedTopics(remoteNode);
-
 	int status = ((Integer) response[0]).intValue();
 	if (status <= 0) {
 	    logger.severe("Failed to get remote topic lists for " + remoteNode);
@@ -417,11 +417,23 @@ public class RosXMPPBridgeConnectionManager implements RosXMPPBridgeConnection {
 	    XmlRpcClient client = getRosMasterRpcClient(DEFAULT_ROS_MASTER_URI);
 	    Object[] params = new Object[] {ROSXMPP_CALLERID, topic, type, slaveHandler.getUri()};
 	    try {
-		client.execute("registerPublisher", params);
+		response = (Object[]) client.execute("registerPublisher", params);
 	    } catch (XmlRpcException e) {
 		logger.severe("Failed to invoke registerPublisher.");
 		return -1;
 	    }
+	    
+	    // Check if the local registration succeeded
+	    if (((Integer) response[0]).intValue() <= 0) {
+		logger.severe("Failed to register remote topic " + 
+			topic + " of type " + type + 
+			" on ROS master at " + DEFAULT_ROS_MASTER_URI);
+		return -1;
+	    }
+	    
+	    // Tell the slave handler to now serve request for this topic
+	    // TODO Check for concurrency issues (client connecting before the handler is up)
+	    slaveHandler.manageTopic(topic, type);	    
 	}
 
 	return status;

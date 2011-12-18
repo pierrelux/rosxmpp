@@ -1,6 +1,9 @@
 package org.rosxmpp.connection.server;
 
 import java.io.IOException;
+import java.net.ServerSocket;
+import java.util.Arrays;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Vector;
@@ -14,15 +17,73 @@ import org.apache.xmlrpc.server.XmlRpcServerConfigImpl;
 import org.apache.xmlrpc.webserver.WebServer;
 
 public class SlaveApiHandler implements Slave {
-    private static Logger logger = Logger.getLogger("org.rosxmpp.cli");
     private static final int MIN_PORT_NUMBER = 40000;
     private WebServer webServer;
+    private static Logger logger = Logger.getLogger("org.rosxmpp.cli");
 
+    /**
+     * This class is in charge of managing a remote 
+     * (over XMPP) topic for local subscribers.  
+     * 
+     * @author Pierre-Luc Bacon
+     *
+     */
+    class TopicHandler {
+	private static final String TCPROS = "TCPROS";
+	// Map callerid to server sockets.
+	HashMap<String, ServerSocket> channels = new HashMap<String, ServerSocket>();
+	
+	public TopicHandler(String topic, String type) {
+	    // TODO Auto-generated constructor stub
+	}
+	
+	/**
+	 * Create a communication channel for the caller
+	 * @param callerId The caller requesting this channel
+	 * @param protocols The protocols that the caller wants to use.
+	 * @return (int, str, [str, !XMLRPCLegalValue*] )
+	 */
+	public Object[] requestTopic(String callerId, Object[] protocols)
+	{
+	    // Iterate over all protocols to find TCP ROS
+	    int code = -1;
+	    String statusMessage = "Request failed";
+	    String[] chosenProtocol = new String[] {"TCPROS", ""};
+	    
+	    for (Object prot : protocols) {
+		Object[] protocol = (Object[]) prot;
+		String[] candidateProtocol = Arrays.copyOf(protocol, protocol.length, String[].class);
+		
+		if (candidateProtocol[0].equals(TCPROS)) {
+		    logger.info("Creating TCPROS channel for callerid " + callerId);
+		    ServerSocket socket = null;
+		    try {
+			socket = new ServerSocket(AvailablePortFinder.getNextAvailable(MIN_PORT_NUMBER));
+		    } catch (IOException e) {
+		        logger.severe("Failed to create server socket for callerid " + callerId);
+		        code = -1;
+		        return new Object[]{code, statusMessage, chosenProtocol};
+		    }
+		    	    
+		    // TODO Start server thread
+		    channels.put(callerId, socket);
+
+		    statusMessage = "ready on " + socket.getInetAddress().toString();
+		    return new Object[]{code, statusMessage, chosenProtocol};
+		}
+	    }
+	    
+            return new Object[]{code, statusMessage, chosenProtocol};
+	}
+    };
+    
+    HashMap<String, TopicHandler> topicHandlers = new HashMap<String, TopicHandler>();
+    
     public SlaveApiHandler() {
 
 	startWebserver();
 
-	logger.info("rosxmppbridge XML-RPC interface started");
+	logger.info("rosxmppbridge XML-RPC interface started on port " + webServer.getPort());
     }
 
     public void startWebserver() {
@@ -60,7 +121,7 @@ public class SlaveApiHandler implements Slave {
      * @return the XML-RPC slave URI.
      */
     public String getUri() {
-	return "http://localhost:" + webServer.getPort();
+	return "http://merlin:" + webServer.getPort() + "/";
     }
 
     @Override
@@ -167,15 +228,27 @@ public class SlaveApiHandler implements Slave {
     }
 
     @Override
-    public List<Object> requestTopic(String callerId, String topic,
+    public Object[] requestTopic(String callerId, String topic,
 	    Object[] protocols) {
-	// TODO Auto-generated method stub
-	return null;
+	TopicHandler handler = topicHandlers.get(topic);
+	if (handler == null) {
+	    int code = -1;
+	    String statusMessage = "Request failed";
+	    String[] chosenProtocol = new String[] {"TCPROS", ""};
+	    return new Object[]{code, statusMessage, chosenProtocol};
+	}
+
+	logger.info("Calling requestTopic on handler");
+	return handler.requestTopic(callerId, protocols);
     }
 
     @Override
     public List<Object> shutdown(String callerId, String message) {
 	// TODO Auto-generated method stub
 	return null;
+    }
+
+    public void manageTopic(String topic, String type) {
+	topicHandlers.put(topic, new TopicHandler(topic, type));	
     }
 }
