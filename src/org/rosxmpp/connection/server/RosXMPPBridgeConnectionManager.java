@@ -7,6 +7,7 @@ import java.net.MalformedURLException;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
+import java.util.List;
 import java.util.logging.Logger;
 
 import org.activequant.xmpprpc.JabberRpcClient;
@@ -20,7 +21,14 @@ import org.jivesoftware.smack.RosterListener;
 import org.jivesoftware.smack.XMPPConnection;
 import org.jivesoftware.smack.XMPPException;
 import org.jivesoftware.smack.packet.Presence;
+import org.jivesoftware.smackx.jingle.JingleManager;
+import org.jivesoftware.smackx.jingle.JingleSession;
+import org.jivesoftware.smackx.jingle.JingleSessionRequest;
+import org.jivesoftware.smackx.jingle.listeners.JingleSessionRequestListener;
+import org.jivesoftware.smackx.jingle.media.JingleMediaManager;
+import org.jivesoftware.smackx.jingle.nat.BasicTransportManager;
 import org.rosxmpp.connection.client.XmlRpcServerProxy;
+import org.rosxmpp.transport.UDTMediaManager;
 
 /**
  * This class manages interaction to a given XMPP server. The CLI rosxmpp
@@ -337,6 +345,39 @@ public class RosXMPPBridgeConnectionManager implements RosXMPPBridgeConnection {
 	return topics;
     }
 
+    /**
+     * Initializes a Jingle listener for TCPROS tunnelling
+     */
+    private void initializeJingleServer()
+    {
+	BasicTransportManager transportManager = new BasicTransportManager();
+	List<JingleMediaManager> mediaManagers = new ArrayList<JingleMediaManager>();
+	mediaManagers.add(new UDTMediaManager(transportManager));
+
+	JingleManager jm = new JingleManager(connection, mediaManagers);
+
+	jm.addJingleSessionRequestListener(new JingleSessionRequestListener() {
+	    public void sessionRequested(JingleSessionRequest request) {
+		try {
+		    logger.info("Accepting Jingle session requests ...");
+		    
+		    // Accept the call
+		    JingleSession incoming = request.accept();
+		    logger.info("Jingle session request accepted.");
+
+		    // Keep track of the session id somewhere 
+		    
+		    // Start the call
+		    incoming.startIncoming();
+		}
+		catch (XMPPException e) {
+		   logger.severe("Failed to accept jingle session requests");
+		   e.printStackTrace();
+		}
+	    }
+	});
+    }
+    
     @Override
     public int exposeRosMaster(String uri) {
 	logger.info("Handling exposeRosMaster request");
@@ -371,6 +412,8 @@ public class RosXMPPBridgeConnectionManager implements RosXMPPBridgeConnection {
 	logger.info("Master API exposed over Jabber-RPC at "
 		+ connection.getUser());
 
+	initializeJingleServer();
+	
 	return 1;
     }
 

@@ -1,7 +1,7 @@
 package org.rosxmpp.connection.server;
 
 import java.io.IOException;
-import java.net.ServerSocket;
+import java.net.UnknownHostException;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
@@ -31,7 +31,7 @@ public class SlaveApiHandler implements Slave {
     class TopicHandler {
 	private static final String TCPROS = "TCPROS";
 	// Map callerid to server sockets.
-	HashMap<String, ServerSocket> channels = new HashMap<String, ServerSocket>();
+	HashMap<String, TcpRosServer> channels = new HashMap<String, TcpRosServer>();
 	
 	public TopicHandler(String topic, String type) {
 	    // TODO Auto-generated constructor stub
@@ -48,7 +48,7 @@ public class SlaveApiHandler implements Slave {
 	    // Iterate over all protocols to find TCP ROS
 	    int code = -1;
 	    String statusMessage = "Request failed";
-	    String[] chosenProtocol = new String[] {"TCPROS", ""};
+	    Object[] chosenProtocol = new Object[3];
 	    
 	    for (Object prot : protocols) {
 		Object[] protocol = (Object[]) prot;
@@ -56,19 +56,34 @@ public class SlaveApiHandler implements Slave {
 		
 		if (candidateProtocol[0].equals(TCPROS)) {
 		    logger.info("Creating TCPROS channel for callerid " + callerId);
-		    ServerSocket socket = null;
+		    TcpRosServer tcpRosServer = null;
 		    try {
-			socket = new ServerSocket(AvailablePortFinder.getNextAvailable(MIN_PORT_NUMBER));
-		    } catch (IOException e) {
-		        logger.severe("Failed to create server socket for callerid " + callerId);
-		        code = -1;
-		        return new Object[]{code, statusMessage, chosenProtocol};
+			tcpRosServer = new TcpRosServer(AvailablePortFinder.getNextAvailable(MIN_PORT_NUMBER));
+			tcpRosServer.start();	
+			logger.info("TcpRosServer started");
+		    } catch (TcpRosServerException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+			break;
 		    }
 		    	    
 		    // TODO Start server thread
-		    channels.put(callerId, socket);
+		    channels.put(callerId, tcpRosServer);
 
-		    statusMessage = "ready on " + socket.getInetAddress().toString();
+		    chosenProtocol[0] = (String) "TCPROS";
+		    try {
+			chosenProtocol[1] = (String) tcpRosServer.getHostname();
+		    } catch (UnknownHostException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		    }
+		    chosenProtocol[2] = (int) tcpRosServer.getLocalPort();
+		    
+		    statusMessage = "ready on " + (String) chosenProtocol[1] + ":" + tcpRosServer.getLocalPort();
+		    
+		    logger.info(statusMessage);
+		    
+		    code = 1;
 		    return new Object[]{code, statusMessage, chosenProtocol};
 		}
 	    }
@@ -230,11 +245,14 @@ public class SlaveApiHandler implements Slave {
     @Override
     public Object[] requestTopic(String callerId, String topic,
 	    Object[] protocols) {
+	logger.info("Requesting topic " + topic);
 	TopicHandler handler = topicHandlers.get(topic);
 	if (handler == null) {
 	    int code = -1;
 	    String statusMessage = "Request failed";
-	    String[] chosenProtocol = new String[] {"TCPROS", ""};
+	    Object[] chosenProtocol = new Object[] {"TCPROS", "", 0};
+	    
+	    logger.warning("No topic handler found for " + topic);
 	    return new Object[]{code, statusMessage, chosenProtocol};
 	}
 

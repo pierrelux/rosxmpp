@@ -7,6 +7,11 @@ import java.util.logging.Logger;
 import org.apache.xmlrpc.XmlRpcException;
 import org.rosxmpp.connection.client.XmlRpcServerProxy;
 
+/**
+ * This class is exposed over Jabber-RPC. This is not the XML-RPC master interface.
+ * @author pierre-luc
+ *
+ */
 public class MasterImpl implements Master {
 
 	private XmlRpcServerProxy rosServerProxy;
