@@ -51,9 +51,11 @@ public class RosXMPPJabberServer implements Master {
      * @param topicName The topic name to serve over the jingle ICE UDP transport
      * @return -1 on error, 1 on success (ROS convention)
      */
-    public int requestTopic(String jingleSessionId, String topicName) {
+    public Object[] requestTopic(String jingleSessionId, String topicName) {
 	logger.info("Handling requestTopic for jingle session id " + jingleSessionId + " for topic " + topicName);
-	return 1;
+	
+	Object[] ret = new Object[] { 1, "ready", 1 };
+	return ret;
     }
     
     @Override

@@ -9,8 +9,10 @@ import org.jivesoftware.smackx.jingle.JingleManager;
 import org.jivesoftware.smackx.jingle.JingleSession;
 import org.jivesoftware.smackx.jingle.JingleSessionRequest;
 import org.jivesoftware.smackx.jingle.listeners.JingleSessionRequestListener;
+import org.jivesoftware.smackx.jingle.listeners.JingleTransportListener;
 import org.jivesoftware.smackx.jingle.media.JingleMediaManager;
 import org.jivesoftware.smackx.jingle.nat.BasicTransportManager;
+import org.jivesoftware.smackx.jingle.nat.TransportCandidate;
 
 public class JingleCommunication {
     private Connection xmppConnection = null;
@@ -52,7 +54,6 @@ public class JingleCommunication {
 	mediaManagers.add(new UDTMediaManager(transportManager));
 
 	jm = new JingleManager(xmppConnection, mediaManagers);
-	//jm.addCreationListener(transportManager);
 
 	jm.addJingleSessionRequestListener(new JingleSessionRequestListener() {
 	    public void sessionRequested(JingleSessionRequest request) {
@@ -80,18 +81,16 @@ public class JingleCommunication {
 	    // TODO Auto-generated catch block
 	    e.printStackTrace();
 	}
+	
 	outgoing.startOutgoing();	
     }
 
-    public static void main(String args[]) {
-	Connection.DEBUG_ENABLED = true;
+    public static void main(String args[]) throws InterruptedException {
 
 	JingleCommunication jingle1 = new JingleCommunication("merlin", "pierre-luc", "test", "ros/topic1");
 	new JingleCommunication("merlin", "rodney", "brooks", "ros/topic2");
 	jingle1.startOutgoingChannel("rodney@merlin/ros/topic2");
 
-	while(true) {
-
-	}
+	Thread.sleep(5000);
     }
 }

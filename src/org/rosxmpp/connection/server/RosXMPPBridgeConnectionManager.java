@@ -25,10 +25,8 @@ import org.jivesoftware.smackx.jingle.JingleManager;
 import org.jivesoftware.smackx.jingle.JingleSession;
 import org.jivesoftware.smackx.jingle.JingleSessionRequest;
 import org.jivesoftware.smackx.jingle.listeners.JingleSessionRequestListener;
-import org.jivesoftware.smackx.jingle.listeners.JingleTransportListener;
 import org.jivesoftware.smackx.jingle.media.JingleMediaManager;
 import org.jivesoftware.smackx.jingle.nat.BasicTransportManager;
-import org.jivesoftware.smackx.jingle.nat.TransportCandidate;
 import org.rosxmpp.connection.client.XmlRpcServerProxy;
 import org.rosxmpp.transport.UDTMediaManager;
 
@@ -179,6 +177,7 @@ public class RosXMPPBridgeConnectionManager implements RosXMPPBridgeConnection {
      * @return a JabberRpcClient for the remote user
      */
     private JabberRpcClient getJabberRpcClient(String remoteUser) {
+	logger.info("Searching for client " + remoteUser);
 	JabberRpcClient xmppRpcClient = jabberRpcClients.get(remoteUser);
 	if (xmppRpcClient != null) {
 	    return xmppRpcClient;
@@ -198,8 +197,8 @@ public class RosXMPPBridgeConnectionManager implements RosXMPPBridgeConnection {
 	xmppRpcClient.start();
 
 	jabberRpcClients.put(remoteUser, xmppRpcClient);
-	logger.info("User " + remoteUser + "/" + ROSXMPP_RPC_RESOURCE
-		+ " added for instantiated Jabber-RPC client");
+	logger.info("User " + remoteUser
+		+ " instantiated Jabber-RPC client list");
 
 	return xmppRpcClient;
     }
@@ -397,7 +396,8 @@ public class RosXMPPBridgeConnectionManager implements RosXMPPBridgeConnection {
      * @param remoteMaster
      *            The remote ros master jid to contact
      */
-    public JingleSession createOutgoingJingleChannel(String remoteMaster) {
+    private JingleSession createOutgoingJingleChannel(String remoteMaster) {
+	remoteMaster = remoteMaster  + "/" + ROSXMPP_RPC_RESOURCE;
 	logger.info("Initiating Jingle session to " + remoteMaster);
 	JingleSession outgoing = null;
 	try {
@@ -412,48 +412,42 @@ public class RosXMPPBridgeConnectionManager implements RosXMPPBridgeConnection {
     
     public int establishJingleRosChannel(final String remoteMasterJid,
 	    final String topicName) {
+		
 	// Initiate Jingle session to remote peer
 	JingleSession jingleSession = createOutgoingJingleChannel(remoteMasterJid);
 	jingleSessions.put(topicName, jingleSession);
 	
-	jingleSession.addTransportListener(new JingleTransportListener() {
-	    @Override
-	    public void transportEstablished(TransportCandidate arg0,
-		    TransportCandidate arg1) {
-		logger.info("Jingle ICE UDP transport established");
-
-		// Send request to remote ros master to start TCPROS flow into
-		// this session
-		JabberRpcClient client = getJabberRpcClient(remoteMasterJid);
-		
-		ArrayList<Object> params = new ArrayList<Object>();
-		params.add(arg0.getSessionId());
-		params.add(topicName);
-		
-		try {
-		    int ret = (Integer) client.execute(MASTER_NAMESPACE + ".requestTopic", params);
-		    logger.info("Request topic returned " + ret);
-		} catch (XmlRpcException e) {
-		    // TODO Auto-generated catch block
-		    e.printStackTrace();
-		}
-	    }
-
-	    @Override
-	    public void transportClosedOnError(XMPPException arg0) {
-		logger.info("Jingle ICE UDP transport closed on error");
-	    }
-
-	    @Override
-	    public void transportClosed(TransportCandidate arg0) {
-		logger.info("Jingle ICE UDP transport closed");
-	    }
-	});
-
 	jingleSession.startOutgoing();
-	
 	logger.info("Jingle session request sent to " + remoteMasterJid + " for topic " + topicName);
 
+	// FIXME The asynchronous JingleTransportListener seems broken in the current version
+	// The notification method is commented out in the source code. Therefore, we need to 
+	// do the following below. Remove this as soon as it gets fixed.
+	while(!jingleSession.isFullyEstablished()) {
+	    Thread.yield();
+	}
+	logger.info("Jingle ICE UDP transport established");
+
+	// Send request to start TCPROS flow via jingle
+	JabberRpcClient client = getJabberRpcClient(remoteMasterJid);
+	
+	ArrayList<Object> params = new ArrayList<Object>();
+	params.add(jingleSession.getSid());
+	params.add(topicName);
+	
+	int success = -1;
+	try {
+	    logger.info("Requesting remote topic tunnelling to " + remoteMasterJid);
+
+	    Object[] ret = (Object[]) client.execute(MASTER_NAMESPACE + ".requestTopic", params);
+	    success = (Integer) ret[0];
+	    
+	    logger.info("Request topic returned " + success);
+	} catch (XmlRpcException e) {
+	    // TODO Auto-generated catch block
+	    e.printStackTrace();
+	}
+	
 	return 1;
     }
 
@@ -563,8 +557,7 @@ public class RosXMPPBridgeConnectionManager implements RosXMPPBridgeConnection {
 	    // Tell the slave handler to now serve request for this topic
 	    // TODO Check for concurrency issues (client connecting before the
 	    // handler is up)
-	    slaveHandler.manageTopic(topic, type, remoteNode + "/"
-		    + ROSXMPP_RPC_RESOURCE);
+	    slaveHandler.manageTopic(topic, type, remoteNode);
 	}
 
 	return status;

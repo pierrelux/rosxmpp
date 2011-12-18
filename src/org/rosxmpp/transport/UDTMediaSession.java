@@ -29,7 +29,6 @@ public class UDTMediaSession extends JingleMediaSession {
     public UDTMediaSession(final PayloadType payloadType, final TransportCandidate remote, final TransportCandidate local,
             final String locator, JingleSession jingleSession) {
         super(payloadType, remote, local, "UDT", jingleSession);
-        initialize();
     }
 
     /**
@@ -85,6 +84,7 @@ public class UDTMediaSession extends JingleMediaSession {
     /**
      * Starts transmission and for NAT Traversal reasons start receiving also.
      */
+    @Override
     public void startTrasmit() {
         
     }
@@ -95,6 +95,7 @@ public class UDTMediaSession extends JingleMediaSession {
      *
      * @param active active state
      */
+    @Override
     public void setTrasmit(boolean active) {
         
     }
@@ -102,6 +103,7 @@ public class UDTMediaSession extends JingleMediaSession {
     /**
      * For NAT Reasons this method does nothing. Use startTransmit() to start transmit and receive jmf
      */
+    @Override
     public void startReceive() {
         // Do nothing
     }
@@ -109,6 +111,7 @@ public class UDTMediaSession extends JingleMediaSession {
     /**
      * Stops transmission and for NAT Traversal reasons stop receiving also.
      */
+    @Override
     public void stopTrasmit() {
        
     }
@@ -116,6 +119,7 @@ public class UDTMediaSession extends JingleMediaSession {
     /**
      * For NAT Reasons this method does nothing. Use startTransmit() to start transmit and receive jmf
      */
+    @Override
     public void stopReceive() {
        
     }
