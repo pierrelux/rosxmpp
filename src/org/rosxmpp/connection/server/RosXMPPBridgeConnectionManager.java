@@ -76,6 +76,9 @@ public class RosXMPPBridgeConnectionManager implements RosXMPPBridgeConnection {
     // XMPP connection to the XMPP server
     private XMPPConnection connection;
 
+    // Jingle manager for the Jingle ICE UDP server
+    private JingleManager jm;
+
     // Can map multiple ROS cores using this rosxmppbridge
     private HashMap<String, JabberRpcServer> jabberRpcServers = new HashMap<String, JabberRpcServer>();
 
@@ -270,6 +273,8 @@ public class RosXMPPBridgeConnectionManager implements RosXMPPBridgeConnection {
 	    logger.severe("Failed to write PID file " + pidFile.getName());
 	    return -1;
 	}
+	
+	initializeJingleServer();
 
 	// Start a Slave API handlers
 	slaveHandler = new SlaveApiHandler();
@@ -354,7 +359,7 @@ public class RosXMPPBridgeConnectionManager implements RosXMPPBridgeConnection {
 	List<JingleMediaManager> mediaManagers = new ArrayList<JingleMediaManager>();
 	mediaManagers.add(new UDTMediaManager(transportManager));
 
-	JingleManager jm = new JingleManager(connection, mediaManagers);
+	jm = new JingleManager(connection, mediaManagers);
 
 	jm.addJingleSessionRequestListener(new JingleSessionRequestListener() {
 	    public void sessionRequested(JingleSessionRequest request) {
@@ -376,6 +381,26 @@ public class RosXMPPBridgeConnectionManager implements RosXMPPBridgeConnection {
 		}
 	    }
 	});
+	
+	logger.info("Jingle server initialized");
+    }
+    
+    /**
+     * Initiate a jingle session to a remote ros master
+     * TODO Find another way to avoid exposing this method
+     * @param remoteMaster The remote ros master jid to contact
+     */
+    public void startOutgoingJingleChannel(String remoteMaster)
+    {
+	logger.info("Initiating Jingle session to " + remoteMaster);
+	JingleSession outgoing = null;
+	try {
+	    outgoing = jm.createOutgoingJingleSession(remoteMaster);
+	} catch (XMPPException e) {
+	    // TODO Auto-generated catch block
+	    e.printStackTrace();
+	}
+	outgoing.startOutgoing();	
     }
     
     @Override
@@ -411,8 +436,6 @@ public class RosXMPPBridgeConnectionManager implements RosXMPPBridgeConnection {
 
 	logger.info("Master API exposed over Jabber-RPC at "
 		+ connection.getUser());
-
-	initializeJingleServer();
 	
 	return 1;
     }
@@ -476,7 +499,7 @@ public class RosXMPPBridgeConnectionManager implements RosXMPPBridgeConnection {
 	    
 	    // Tell the slave handler to now serve request for this topic
 	    // TODO Check for concurrency issues (client connecting before the handler is up)
-	    slaveHandler.manageTopic(topic, type);	    
+	    slaveHandler.manageTopic(topic, type, remoteNode + "/" + ROSXMPP_RPC_RESOURCE);	    
 	}
 
 	return status;

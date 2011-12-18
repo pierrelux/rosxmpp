@@ -32,9 +32,14 @@ public class SlaveApiHandler implements Slave {
 	private static final String TCPROS = "TCPROS";
 	// Map callerid to server sockets.
 	HashMap<String, TcpRosServer> channels = new HashMap<String, TcpRosServer>();
+	private String topic;
+	private String type;
+	private String remoteMasterJid;
 	
-	public TopicHandler(String topic, String type) {
-	    // TODO Auto-generated constructor stub
+	public TopicHandler(String topic, String type, String remoteMasterJid) {
+	    this.topic = topic;
+	    this.type = type;
+	    this.remoteMasterJid = remoteMasterJid;
 	}
 	
 	/**
@@ -58,7 +63,7 @@ public class SlaveApiHandler implements Slave {
 		    logger.info("Creating TCPROS channel for callerid " + callerId);
 		    TcpRosServer tcpRosServer = null;
 		    try {
-			tcpRosServer = new TcpRosServer(AvailablePortFinder.getNextAvailable(MIN_PORT_NUMBER));
+			tcpRosServer = new TcpRosServer(AvailablePortFinder.getNextAvailable(MIN_PORT_NUMBER), remoteMasterJid);
 			tcpRosServer.start();	
 			logger.info("TcpRosServer started");
 		    } catch (TcpRosServerException e) {
@@ -266,7 +271,7 @@ public class SlaveApiHandler implements Slave {
 	return null;
     }
 
-    public void manageTopic(String topic, String type) {
-	topicHandlers.put(topic, new TopicHandler(topic, type));	
+    public void manageTopic(String topic, String type, String remoteMasterJid) {
+	topicHandlers.put(topic, new TopicHandler(topic, type, remoteMasterJid));	
     }
 }
