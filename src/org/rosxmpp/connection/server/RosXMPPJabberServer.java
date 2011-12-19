@@ -6,6 +6,7 @@ import java.util.logging.Logger;
 
 import org.apache.xmlrpc.XmlRpcException;
 import org.rosxmpp.connection.client.XmlRpcServerProxy;
+import org.rosxmpp.transport.UDTMediaSession;
 
 /**
  * This class is exposed over Jabber-RPC. This is not the XML-RPC master
@@ -47,17 +48,61 @@ public class RosXMPPJabberServer implements Master {
 
     /**
      * This method will be called once a jingle session has been established.
-     * @param jingleSessionId Jingle session id previsouly established
-     * @param topicName The topic name to serve over the jingle ICE UDP transport
+     * 
+     * @param jingleSessionId
+     *            Jingle session id previsouly established
+     * @param topicName
+     *            The topic name to serve over the jingle ICE UDP transport
      * @return -1 on error, 1 on success (ROS convention)
      */
     public Object[] requestTopic(String jingleSessionId, String topicName) {
-	logger.info("Handling requestTopic for jingle session id " + jingleSessionId + " for topic " + topicName);
-	
+	logger.info("Handling requestTopic for jingle session id "
+		+ jingleSessionId + " for topic " + topicName);
 	Object[] ret = new Object[] { 1, "ready", 1 };
+
+	// Check if there is an existing jingle session
+	UDTMediaSession mediaSession = (UDTMediaSession) RosXMPPBridgeConnectionManager.getInstance().getIncomingMediaSession(jingleSessionId);
+	if (mediaSession == null) {
+	    ret[0] = -1;
+	    ret[1] = "No such jingle sid";
+	    return ret; 
+	}
+	
+	// Start a XML-RPC handler for publisher notifications
+	// get slave api server address
+	
+	// Register a new subscriber to the topic
+	logger.info("Jabber-RPC Server : Registering subscriber on behalf of remote peer");
+	Object[] params = new Object[] { callerId, topicName, new Object[] {"TCPROS"} };
+	Object[] response = null;
+	try {
+	    response = (Object[]) rosServerProxy.getRpcClient().execute(
+		    "registerSubscriber", params);
+	} catch (XmlRpcException e) {
+	    logger.severe("Failed to request topic");
+	    e.printStackTrace();
+	}
+	
+	// Request topic on publisher
+	logger.info("Jabber-RPC Server : Requesting topic for remote peer");
+	params = new Object[] { callerId, topicName, new Object[] {"TCPROS"} };
+	response = null;
+	try {
+	    response = (Object[]) rosServerProxy.getRpcClient().execute(
+		    "requestTopic", params);
+	} catch (XmlRpcException e) {
+	    logger.severe("Failed to request topic");
+	    e.printStackTrace();
+	}
+	
+	// Open TCP connection to publisher
+	mediaSession.setLocalTopicPublisherAddress((String) response[1], (Integer) response[2]);
+	mediaSession.setTrasmit(true);
+	mediaSession.startTrasmit();
+	
 	return ret;
     }
-    
+
     @Override
     public List<Object> getSystemState(String callerId) {
 	// TODO Auto-generated method stub

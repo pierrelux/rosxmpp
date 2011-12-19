@@ -26,6 +26,7 @@ import org.jivesoftware.smackx.jingle.JingleSession;
 import org.jivesoftware.smackx.jingle.JingleSessionRequest;
 import org.jivesoftware.smackx.jingle.listeners.JingleSessionRequestListener;
 import org.jivesoftware.smackx.jingle.media.JingleMediaManager;
+import org.jivesoftware.smackx.jingle.media.JingleMediaSession;
 import org.jivesoftware.smackx.jingle.nat.BasicTransportManager;
 import org.rosxmpp.connection.client.XmlRpcServerProxy;
 import org.rosxmpp.transport.UDTMediaManager;
@@ -89,7 +90,10 @@ public class RosXMPPBridgeConnectionManager implements RosXMPPBridgeConnection {
     
     // Maintain the active jingle sessions in this map. The key is the topic being served
     // Sessions should be removed if no topic request is received within a time interval over Jabber
-    private HashMap<String, JingleSession> jingleSessions = new HashMap<String, JingleSession>();
+    private HashMap<String, JingleSession> outgoingJingleSessions = new HashMap<String, JingleSession>();
+    
+    // Map jingle session id to jingle session
+    private HashMap<String, JingleSession> incomingJingleSessions = new HashMap<String, JingleSession>();
 
     /**
      * We use a connection listener to automatically delete the entry under
@@ -376,9 +380,11 @@ public class RosXMPPBridgeConnectionManager implements RosXMPPBridgeConnection {
 		    logger.info("Jingle session request accepted.");
 
 		    // Keep track of the session id somewhere
-
+		    incomingJingleSessions.put(incoming.getSid(), incoming);
+		    
 		    // Start the call
 		    incoming.startIncoming();
+		    
 		} catch (XMPPException e) {
 		    logger.severe("Failed to accept jingle session requests");
 		    e.printStackTrace();
@@ -415,7 +421,7 @@ public class RosXMPPBridgeConnectionManager implements RosXMPPBridgeConnection {
 		
 	// Initiate Jingle session to remote peer
 	JingleSession jingleSession = createOutgoingJingleChannel(remoteMasterJid);
-	jingleSessions.put(topicName, jingleSession);
+	outgoingJingleSessions.put(topicName, jingleSession);
 	
 	jingleSession.startOutgoing();
 	logger.info("Jingle session request sent to " + remoteMasterJid + " for topic " + topicName);
@@ -449,6 +455,16 @@ public class RosXMPPBridgeConnectionManager implements RosXMPPBridgeConnection {
 	}
 	
 	return 1;
+    }
+    
+    public JingleMediaSession getIncomingMediaSession(String sid)
+    {
+	JingleSession jingleSession = incomingJingleSessions.get(sid);
+	if (jingleSession == null) {
+	    // TODO throw an exception
+	    return null;
+	}
+	return jingleSession.getMediaSession("UDT");
     }
 
     @Override
